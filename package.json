@@ -1,0 +1,18 @@
+{
+  "name": "clash-royale-duel-decks-v5",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Extract popular Clash Royale decks from RoyaleAPI.",
+  "scripts": {
+    "extract": "node src/extract-decks.js",
+    "find-war-decks": "node src/find-war-decks.js",
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.60.0"
+  }
+}

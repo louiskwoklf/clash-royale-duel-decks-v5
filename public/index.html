@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Find four Clash Royale decks with no overlapping cards."
+    />
+    <title>War Deck Finder</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="page-glow page-glow-one" aria-hidden="true"></div>
+    <div class="page-glow page-glow-two" aria-hidden="true"></div>
+
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="War Deck Finder home">
+        <span class="brand-mark" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+        </span>
+        <span>
+          <strong>War Deck</strong>
+          <small>Finder</small>
+        </span>
+      </a>
+      <div class="live-pill"><span></span> Live meta data</div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-copy">
+          <p class="eyebrow">Clash Royale · Clan Wars</p>
+          <h1 id="page-title">Four decks.<br /><em>Zero shared cards.</em></h1>
+          <p class="hero-description">
+            Turn today’s popular decks into battle-ready war bundles. Every result is
+            checked across all 32 card slots.
+          </p>
+        </div>
+
+        <div class="control-panel" aria-label="Search controls">
+          <div>
+            <span class="control-label">Meta window</span>
+            <div class="range-tabs" role="group" aria-label="Meta date range">
+              <button class="range-tab active" type="button" data-days="1" aria-pressed="true">
+                1 day
+              </button>
+              <button class="range-tab" type="button" data-days="3" aria-pressed="false">
+                3 days
+              </button>
+              <button class="range-tab" type="button" data-days="7" aria-pressed="false">
+                7 days
+              </button>
+            </div>
+          </div>
+          <button class="refresh-button" id="refresh-button" type="button">
+            <span class="refresh-icon" aria-hidden="true">↻</span>
+            Refresh meta
+          </button>
+          <p class="status-line" id="status-line" role="status" aria-live="polite">
+            Preparing the arena…
+          </p>
+        </div>
+      </section>
+
+      <section class="stats-grid" aria-label="Search statistics">
+        <article class="stat-card accent-gold">
+          <span>Candidate decks</span>
+          <strong id="candidate-count">—</strong>
+          <small>Top-rated decks searched</small>
+        </article>
+        <article class="stat-card accent-blue">
+          <span>Combinations</span>
+          <strong id="combination-count">—</strong>
+          <small>Four-deck bundles checked</small>
+        </article>
+        <article class="stat-card accent-green">
+          <span>Valid war decks</span>
+          <strong id="valid-count">—</strong>
+          <small>32 unique cards each</small>
+        </article>
+        <article class="stat-card accent-purple">
+          <span>Card conflicts</span>
+          <strong id="conflict-count">—</strong>
+          <small>Bundles rejected</small>
+        </article>
+      </section>
+
+      <section class="results-section" aria-labelledby="results-heading">
+        <div class="results-toolbar">
+          <div>
+            <p class="eyebrow">Battle-ready bundles</p>
+            <h2 id="results-heading">Valid war decks</h2>
+          </div>
+          <label class="search-field">
+            <span class="visually-hidden">Filter by deck or card name</span>
+            <span aria-hidden="true">⌕</span>
+            <input id="filter-input" type="search" placeholder="Filter decks or cards" />
+          </label>
+        </div>
+
+        <div class="results-meta">
+          <p id="results-summary">Waiting for results</p>
+          <p id="source-summary"></p>
+        </div>
+
+        <div class="results-list" id="results-list" aria-live="polite"></div>
+
+        <div class="empty-state hidden" id="empty-state">
+          <div class="empty-shield" aria-hidden="true">×</div>
+          <h3 id="empty-title">No bundles found</h3>
+          <p id="empty-message">Try another meta window or clear your filter.</p>
+        </div>
+
+        <button class="load-more hidden" id="load-more" type="button">Show more bundles</button>
+      </section>
+    </main>
+
+    <footer>
+      <p>Built for local deck research. Data sourced from RoyaleAPI.</p>
+      <p>Normal, evolved, and hero forms count as the same base card.</p>
+    </footer>
+  </body>
+</html>
