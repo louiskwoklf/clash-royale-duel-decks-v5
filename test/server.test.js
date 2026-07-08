@@ -7,19 +7,14 @@ const { createServer, createWarDeckService, parseApiOptions } = require("../src/
 
 function exampleResult() {
   return {
-    source: "RoyaleAPI",
-    sourceUrl: "https://royaleapi.com/decks/popular?time=1d",
-    retrievalMethod: "test",
     timeRange: "1d",
-    extractedAt: "2026-01-01T00:00:00.000Z",
-    searchedAt: "2026-01-01T00:00:01.000Z",
     candidateDecks: [],
-    candidateDeckCount: 20,
-    totalCombinations: 4845,
-    examinedCombinations: 4845,
-    validWarDeckCount: 2,
-    warDecks: [],
+    warDecks: [{ id: "1-2-3-4" }, { id: "5-6-7-8" }],
   };
+}
+
+function emptyDeckFilters() {
+  return Array.from({ length: 4 }, () => ({ include: [], exclude: [] }));
 }
 
 async function listen(server) {
@@ -36,11 +31,54 @@ async function close(server) {
 }
 
 test("validates API query options", () => {
-  const options = parseApiOptions(new URL("http://localhost/api/war-decks?time=3&size=20"));
-  assert.deepEqual(options, { days: 3, size: 20, method: "auto", refresh: false });
+  const options = parseApiOptions(new URL("http://localhost/api/war-decks?time=3"));
+  assert.deepEqual(options, { days: 3, refresh: false, deckFilters: emptyDeckFilters() });
+  assert.deepEqual(
+    parseApiOptions(
+      new URL(
+        "http://localhost/api/war-decks?time=7&refresh=true&d1inc=goblins&d1inc=goblins&d2exc=balloon-hero",
+      ),
+    ),
+    {
+      days: 7,
+      refresh: true,
+      deckFilters: [
+        { include: ["goblins"], exclude: [] },
+        { include: [], exclude: ["balloon-hero"] },
+        { include: [], exclude: [] },
+        { include: [], exclude: [] },
+      ],
+    },
+  );
   assert.throws(
     () => parseApiOptions(new URL("http://localhost/api/war-decks?time=2")),
     /time must be 1, 3, or 7/,
+  );
+  assert.throws(
+    () => parseApiOptions(new URL("http://localhost/api/war-decks?time=1&d1inc=nope")),
+    /Unknown card key/,
+  );
+  assert.throws(
+    () =>
+      parseApiOptions(
+        new URL(
+          "http://localhost/api/war-decks?time=1&" +
+            [
+              "arrows",
+              "goblins",
+              "knight",
+              "archers",
+              "minions",
+              "zap",
+              "cannon",
+              "mortar",
+              "tesla",
+            ]
+              .map((card) => `d1inc=${card}`)
+              .join("&"),
+        ),
+      ),
+    /cannot include more than 8 cards/,
   );
 });
 
@@ -54,15 +92,15 @@ test("coalesces simultaneous searches for the same meta window", async () => {
     });
   };
   const service = createWarDeckService({ resultProvider });
-  const options = { days: 1, size: 20, method: "auto", refresh: false };
+  const options = { days: 1, refresh: false, deckFilters: emptyDeckFilters() };
   const first = service.get(options);
   const second = service.get(options);
 
   assert.equal(calls, 1);
   release();
   const [firstResponse, secondResponse] = await Promise.all([first, second]);
-  assert.equal(firstResponse.result.validWarDeckCount, 2);
-  assert.equal(secondResponse.cache.sharedRequest, true);
+  assert.equal(firstResponse.warDecks.length, 2);
+  assert.equal(secondResponse.warDecks.length, 2);
 });
 
 test("serves the dashboard and caches API results", async () => {
@@ -80,15 +118,24 @@ test("serves the dashboard and caches API results", async () => {
     assert.equal(home.status, 200);
     assert.match(await home.text(), /War Deck Finder/);
 
+    const cards = await fetch(`${origin}/api/cards`);
+    const cardsJson = await cards.json();
+    assert.equal(cards.status, 200);
+    assert.equal(cardsJson.cards.some((card) => card.key === "goblins"), true);
+
+    const image = await fetch(`${origin}/cards/goblins.png`);
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get("content-type"), "image/png");
+    assert.ok((await image.arrayBuffer()).byteLength > 0);
+
     const first = await fetch(`${origin}/api/war-decks?time=1`);
     const firstJson = await first.json();
     assert.equal(first.status, 200);
-    assert.equal(firstJson.validWarDeckCount, 2);
-    assert.equal(firstJson.request.cache.hit, false);
+    assert.equal(firstJson.warDecks.length, 2);
+    assert.equal(firstJson.request, undefined);
 
     const second = await fetch(`${origin}/api/war-decks?time=1`);
-    const secondJson = await second.json();
-    assert.equal(secondJson.request.cache.hit, true);
+    await second.json();
     assert.equal(calls, 1);
 
     await fetch(`${origin}/api/war-decks?time=1&refresh=true`);

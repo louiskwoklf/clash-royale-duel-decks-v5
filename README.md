@@ -41,11 +41,11 @@ npm start
 
 Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The server binds only to the local
 machine. The dashboard can switch among the 1-, 3-, and 7-day meta windows, manually
-refresh data, filter valid bundles by deck or card name, and inspect all four decks in
-each result.
+refresh data, add per-deck include/exclude card filters, filter valid bundles by deck
+or card name, and inspect all four decks in each result.
 
-API results are cached in memory for five minutes. A manual refresh bypasses cached
-data, while simultaneous requests for the same meta window share one extraction job.
+Results are cached in memory for five minutes. A manual refresh bypasses cached data,
+while simultaneous requests for the same meta window share one extraction job.
 
 Run tests with:
 
@@ -69,7 +69,6 @@ npm run find-war-decks -- \
   --output data/war-decks-1d.json
 ```
 
-For 20 candidate decks, the search examines all 4,845 combinations. A combination is
-included only when the union of its four `baseCards` arrays contains exactly 32 unique
-cards. The output retains the candidate deck list and identifies each valid war deck
-by candidate indexes, RoyaleAPI ranks, deck names, and its 32 base cards.
+A combination is included only when the union of its four `baseCards` arrays contains
+exactly 32 unique cards. The output keeps the candidate deck list and identifies each
+valid war deck by candidate indexes, RoyaleAPI ranks, and deck names.

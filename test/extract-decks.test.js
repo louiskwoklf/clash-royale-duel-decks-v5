@@ -26,6 +26,20 @@ test("buildPopularDecksUrl rejects unsupported date ranges", () => {
   assert.throws(() => buildPopularDecksUrl({ days: 2 }), /1, 3, or 7/);
 });
 
+test("buildPopularDecksUrl appends include and exclude card filters", () => {
+  const url = new URL(
+    buildPopularDecksUrl({
+      days: 7,
+      size: 20,
+      includeCards: ["goblins", "valkyrie-ev1"],
+      excludeCards: ["balloon-hero", "goblin-barrel-ev1"],
+    }),
+  );
+
+  assert.deepEqual(url.searchParams.getAll("inc"), ["goblins", "valkyrie-ev1"]);
+  assert.deepEqual(url.searchParams.getAll("exc"), ["balloon-hero", "goblin-barrel-ev1"]);
+});
+
 test("normalizes evolution and hero variants to their base card", () => {
   assert.equal(normalizeCardSlug("royal-hogs-ev1"), "royal-hogs");
   assert.equal(normalizeCardSlug("barbarian-barrel-hero"), "barbarian-barrel");

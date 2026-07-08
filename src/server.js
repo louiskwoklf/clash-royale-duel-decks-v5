@@ -6,13 +6,15 @@ const http = require("node:http");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const { extractPopularDecks } = require("./extract-decks");
-const { createWarDeckResult } = require("./find-war-decks");
+const { getCardCatalog, validateCardKeys } = require("./card-catalog");
+const { createWarDeckResultFromOptions } = require("./find-war-decks");
 
 const HOST = "127.0.0.1";
 const DEFAULT_PORT = 3000;
 const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
+const WAR_DECK_SIZE = 4;
 const PUBLIC_DIRECTORY = path.resolve(__dirname, "../public");
+const CARD_IMAGE_DIRECTORY = path.join(PUBLIC_DIRECTORY, "cards");
 
 const STATIC_FILES = new Map([
   ["/", { file: "index.html", type: "text/html; charset=utf-8" }],
@@ -30,64 +32,78 @@ class RequestError extends Error {
 
 function parseApiOptions(url) {
   const days = Number.parseInt(url.searchParams.get("time") ?? "1", 10);
-  const size = Number.parseInt(url.searchParams.get("size") ?? "20", 10);
-  const method = url.searchParams.get("method") ?? "auto";
   const refresh = url.searchParams.get("refresh") === "true";
+  const deckFilters = parseDeckFilters(url);
 
   if (![1, 3, 7].includes(days)) {
     throw new RequestError("time must be 1, 3, or 7");
   }
 
-  if (!Number.isInteger(size) || size < 4 || size > 30) {
-    throw new RequestError("size must be an integer from 4 to 30");
-  }
+  return { days, refresh, deckFilters };
+}
 
-  if (!["auto", "proxy", "browser"].includes(method)) {
-    throw new RequestError("method must be auto, proxy, or browser");
-  }
+function parseDeckFilters(url) {
+  return Array.from({ length: WAR_DECK_SIZE }, (_, index) => {
+    const deckNumber = index + 1;
+    const include = [
+      ...new Set(url.searchParams.getAll(`d${deckNumber}inc`).filter(Boolean)),
+    ].sort();
+    const exclude = [
+      ...new Set(url.searchParams.getAll(`d${deckNumber}exc`).filter(Boolean)),
+    ].sort();
 
-  return { days, size, method, refresh };
+    try {
+      validateCardKeys(include, `deck ${deckNumber} include cards`);
+      validateCardKeys(exclude, `deck ${deckNumber} exclude cards`);
+    } catch (error) {
+      throw new RequestError(error.message);
+    }
+
+    const overlap = include.find((card) => exclude.includes(card));
+    if (overlap) {
+      throw new RequestError(`Deck ${deckNumber} cannot include and exclude ${overlap}`);
+    }
+
+    if (include.length > 8) {
+      throw new RequestError(`Deck ${deckNumber} cannot include more than 8 cards`);
+    }
+
+    return { include, exclude };
+  });
 }
 
 function createWarDeckService({ resultProvider, cacheTtlMs = DEFAULT_CACHE_TTL_MS } = {}) {
-  const provider =
-    resultProvider ??
-    (async (options) => createWarDeckResult(await extractPopularDecks(options)));
+  const provider = resultProvider ?? createWarDeckResultFromOptions;
   const cache = new Map();
   const inFlight = new Map();
 
   async function get(options) {
-    const key = `${options.days}:${options.size}:${options.method}`;
+    const key = JSON.stringify({
+      days: options.days,
+      deckFilters: options.deckFilters,
+    });
     const now = Date.now();
     const cached = cache.get(key);
 
     if (!options.refresh && cached && cached.expiresAt > now) {
-      return {
-        result: cached.result,
-        cache: { hit: true, expiresAt: new Date(cached.expiresAt).toISOString() },
-      };
+      return cached.result;
     }
 
     if (inFlight.has(key)) {
-      const pending = await inFlight.get(key);
-      return {
-        result: pending.result,
-        cache: { hit: false, sharedRequest: true, expiresAt: pending.expiresAt },
-      };
+      return inFlight.get(key);
     }
 
     const pending = (async () => {
       const result = await provider(options);
       const expiresAt = Date.now() + cacheTtlMs;
       cache.set(key, { result, expiresAt });
-      return { result, expiresAt: new Date(expiresAt).toISOString() };
+      return result;
     })();
 
     inFlight.set(key, pending);
 
     try {
-      const fresh = await pending;
-      return { result: fresh.result, cache: { hit: false, expiresAt: fresh.expiresAt } };
+      return await pending;
     } finally {
       inFlight.delete(key);
     }
@@ -126,6 +142,22 @@ async function serveStaticFile(response, route) {
   response.end(body);
 }
 
+async function serveCardImage(response, pathname) {
+  const match = /^\/cards\/([a-z0-9-]+\.png)$/u.exec(pathname);
+
+  if (!match) {
+    throw new RequestError("Not found", 404);
+  }
+
+  const body = await fs.readFile(path.join(CARD_IMAGE_DIRECTORY, match[1]));
+  response.writeHead(200, {
+    "Content-Type": "image/png",
+    "Content-Length": body.length,
+    "Cache-Control": "public, max-age=604800, immutable",
+  });
+  response.end(body);
+}
+
 function createRequestHandler(options = {}) {
   const service = createWarDeckService(options);
 
@@ -145,19 +177,19 @@ function createRequestHandler(options = {}) {
         return;
       }
 
+      if (url.pathname === "/api/cards") {
+        sendJson(response, 200, { cards: getCardCatalog() });
+        return;
+      }
+
       if (url.pathname === "/api/war-decks") {
         const apiOptions = parseApiOptions(url);
-        const { result, cache } = await service.get(apiOptions);
-        sendJson(response, 200, {
-          ...result,
-          request: {
-            timeRange: `${apiOptions.days}d`,
-            size: apiOptions.size,
-            method: apiOptions.method,
-            cache,
-            servedAt: new Date().toISOString(),
-          },
-        });
+        sendJson(response, 200, await service.get(apiOptions));
+        return;
+      }
+
+      if (url.pathname.startsWith("/cards/")) {
+        await serveCardImage(response, url.pathname);
         return;
       }
 

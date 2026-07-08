@@ -8,7 +8,21 @@ const path = require("node:path");
 const ROYALE_API_ORIGIN = "https://royaleapi.com";
 const VALID_DAYS = new Set([1, 3, 7]);
 
-function buildPopularDecksUrl({ days = 1, size = 20 } = {}) {
+function appendCardFilters(params, key, cards) {
+  if (!Array.isArray(cards)) {
+    throw new Error(`${key} cards must be an array.`);
+  }
+
+  cards.forEach((card) => {
+    if (typeof card !== "string" || card.length === 0) {
+      throw new Error(`${key} cards must contain non-empty card keys.`);
+    }
+
+    params.append(key, card);
+  });
+}
+
+function buildPopularDecksUrl({ days = 1, size = 20, includeCards = [], excludeCards = [] } = {}) {
   if (!VALID_DAYS.has(days)) {
     throw new Error(`Date range must be 1, 3, or 7 days; received ${days}.`);
   }
@@ -18,7 +32,7 @@ function buildPopularDecksUrl({ days = 1, size = 20 } = {}) {
   }
 
   const url = new URL("/decks/popular", ROYALE_API_ORIGIN);
-  url.search = new URLSearchParams({
+  const params = new URLSearchParams({
     time: `${days}d`,
     sort: "rating",
     size: String(size),
@@ -33,7 +47,10 @@ function buildPopularDecksUrl({ days = 1, size = 20 } = {}) {
     mode: "detail",
     type: "TopRanked",
     global_exclude: "false",
-  }).toString();
+  });
+  appendCardFilters(params, "inc", includeCards);
+  appendCardFilters(params, "exc", excludeCards);
+  url.search = params.toString();
 
   return url.toString();
 }
@@ -131,19 +148,13 @@ function parseDecksFromMarkdown(markdown) {
   return decks;
 }
 
-function createResult({ days, size, sourceUrl, decks, retrievalMethod }) {
+function createResult({ days, size, decks }) {
   if (decks.length > size) {
     throw new Error(`RoyaleAPI returned ${decks.length} decks when at most ${size} were requested.`);
   }
 
   return {
-    source: "RoyaleAPI",
-    sourceUrl,
-    retrievalMethod,
     timeRange: `${days}d`,
-    requestedSize: size,
-    deckCount: decks.length,
-    extractedAt: new Date().toISOString(),
     decks,
   };
 }
@@ -151,9 +162,11 @@ function createResult({ days, size, sourceUrl, decks, retrievalMethod }) {
 async function extractPopularDecksThroughProxy({
   days = 1,
   size = 20,
+  includeCards = [],
+  excludeCards = [],
   timeoutMs = 90_000,
 } = {}) {
-  const sourceUrl = buildPopularDecksUrl({ days, size });
+  const sourceUrl = buildPopularDecksUrl({ days, size, includeCards, excludeCards });
   const source = new URL(sourceUrl);
   const proxyUrl = `https://r.jina.ai/http://royaleapi.com${source.pathname}${source.search}`;
   const response = await fetch(proxyUrl, {
@@ -167,18 +180,20 @@ async function extractPopularDecksThroughProxy({
 
   const markdown = await response.text();
   const decks = parseDecksFromMarkdown(markdown);
-  return createResult({ days, size, sourceUrl, decks, retrievalMethod: "jina-reader" });
+  return createResult({ days, size, decks });
 }
 
 async function extractPopularDecksThroughBrowser({
   days = 1,
   size = 20,
+  includeCards = [],
+  excludeCards = [],
   timeoutMs = 90_000,
   chromePath,
   profilePath = path.resolve(".cache/royaleapi-browser"),
 } = {}) {
   const { chromium } = require("playwright");
-  const sourceUrl = buildPopularDecksUrl({ days, size });
+  const sourceUrl = buildPopularDecksUrl({ days, size, includeCards, excludeCards });
   const launchOptions = {
     headless: false,
     viewport: { width: 1280, height: 900 },
@@ -222,7 +237,7 @@ async function extractPopularDecksThroughBrowser({
       return { ...deck, ...parseDeckStatsHref(statsHref) };
     });
 
-    return createResult({ days, size, sourceUrl, decks, retrievalMethod: "browser" });
+    return createResult({ days, size, decks });
   } finally {
     await context.close();
   }
@@ -327,7 +342,7 @@ async function main() {
     const outputPath = path.resolve(options.output);
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
     await fs.writeFile(outputPath, json, "utf8");
-    process.stderr.write(`Extracted ${result.deckCount} decks to ${outputPath}\n`);
+    process.stderr.write(`Extracted ${result.decks.length} decks to ${outputPath}\n`);
   } else {
     process.stdout.write(json);
   }

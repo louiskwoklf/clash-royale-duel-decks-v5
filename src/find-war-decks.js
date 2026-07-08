@@ -7,15 +7,7 @@ const path = require("node:path");
 
 const { extractPopularDecks } = require("./extract-decks");
 
-function countFourDeckCombinations(deckCount) {
-  if (!Number.isInteger(deckCount) || deckCount < 0) {
-    throw new Error(`Deck count must be a non-negative integer; received ${deckCount}.`);
-  }
-
-  return deckCount < 4
-    ? 0
-    : (deckCount * (deckCount - 1) * (deckCount - 2) * (deckCount - 3)) / 24;
-}
+const WAR_DECK_SIZE = 4;
 
 function validateCandidateDeck(deck, index) {
   if (!deck || !Array.isArray(deck.baseCards)) {
@@ -27,6 +19,40 @@ function validateCandidateDeck(deck, index) {
   }
 }
 
+function normalizeCardList(cards = []) {
+  if (!Array.isArray(cards)) {
+    throw new Error("Deck filter card lists must be arrays.");
+  }
+
+  return [...new Set(cards)].sort();
+}
+
+function normalizeDeckFilters(deckFilters = []) {
+  if (!Array.isArray(deckFilters)) {
+    throw new Error("Deck filters must be an array.");
+  }
+
+  return Array.from({ length: WAR_DECK_SIZE }, (_, index) => {
+    const filter = deckFilters[index] ?? {};
+    return {
+      include: normalizeCardList(filter.include ?? []),
+      exclude: normalizeCardList(filter.exclude ?? []),
+    };
+  });
+}
+
+function hasActiveDeckFilters(deckFilters) {
+  return deckFilters.some((filter) => filter.include.length > 0 || filter.exclude.length > 0);
+}
+
+function deckFilterKey(filter) {
+  return JSON.stringify(filter);
+}
+
+function deckIdentity(deck) {
+  return deck.statsUrl ?? deck.cards?.join(",") ?? deck.baseCards.join(",");
+}
+
 function findValidWarDecks(candidateDecks) {
   if (!Array.isArray(candidateDecks)) {
     throw new Error("Candidate decks must be an array.");
@@ -35,13 +61,11 @@ function findValidWarDecks(candidateDecks) {
   candidateDecks.forEach(validateCandidateDeck);
 
   const warDecks = [];
-  let examinedCombinations = 0;
 
   for (let first = 0; first < candidateDecks.length - 3; first += 1) {
     for (let second = first + 1; second < candidateDecks.length - 2; second += 1) {
       for (let third = second + 1; third < candidateDecks.length - 1; third += 1) {
         for (let fourth = third + 1; fourth < candidateDecks.length; fourth += 1) {
-          examinedCombinations += 1;
           const indexes = [first, second, third, fourth];
           const decks = indexes.map((index) => candidateDecks[index]);
           const baseCards = decks.flatMap((deck) => deck.baseCards);
@@ -52,24 +76,67 @@ function findValidWarDecks(candidateDecks) {
 
           const ranks = decks.map((deck, index) => deck.rank ?? indexes[index] + 1);
           warDecks.push({
-            id: ranks.join("-"),
+            id: indexes.join("-"),
             candidateIndexes: indexes,
             deckRanks: ranks,
             deckNames: decks.map((deck) => deck.name ?? null),
-            uniqueBaseCards: baseCards,
           });
         }
       }
     }
   }
 
-  return {
-    candidateDeckCount: candidateDecks.length,
-    totalCombinations: countFourDeckCombinations(candidateDecks.length),
-    examinedCombinations,
-    validWarDeckCount: warDecks.length,
-    warDecks,
-  };
+  return warDecks;
+}
+
+function findValidWarDecksFromPools(candidateDecks, candidatePools) {
+  if (!Array.isArray(candidateDecks) || !Array.isArray(candidatePools)) {
+    throw new Error("Candidate decks and pools must be arrays.");
+  }
+
+  if (candidatePools.length !== WAR_DECK_SIZE) {
+    throw new Error(`Expected ${WAR_DECK_SIZE} candidate pools.`);
+  }
+
+  candidateDecks.forEach(validateCandidateDeck);
+
+  const warDecks = [];
+  const seenBundles = new Set();
+
+  function visit(poolIndex, indexes) {
+    if (poolIndex === candidatePools.length) {
+      const decks = indexes.map((index) => candidateDecks[index]);
+      const baseCards = decks.flatMap((deck) => deck.baseCards);
+
+      if (new Set(baseCards).size !== WAR_DECK_SIZE * 8) {
+        return;
+      }
+
+      const bundleKey = decks.map(deckIdentity).sort().join("|");
+      if (seenBundles.has(bundleKey)) {
+        return;
+      }
+      seenBundles.add(bundleKey);
+
+      const ranks = decks.map((deck, index) => deck.rank ?? indexes[index] + 1);
+      warDecks.push({
+        id: indexes.join("-"),
+        candidateIndexes: indexes,
+        deckRanks: ranks,
+        deckNames: decks.map((deck) => deck.name ?? null),
+      });
+      return;
+    }
+
+    candidatePools[poolIndex].forEach((candidateIndex) => {
+      if (!indexes.includes(candidateIndex)) {
+        visit(poolIndex + 1, [...indexes, candidateIndex]);
+      }
+    });
+  }
+
+  visit(0, []);
+  return warDecks;
 }
 
 function createWarDeckResult(extraction) {
@@ -77,16 +144,50 @@ function createWarDeckResult(extraction) {
     throw new Error("Input must be a deck-extraction result containing a decks array.");
   }
 
-  const search = findValidWarDecks(extraction.decks);
   return {
-    source: extraction.source ?? "RoyaleAPI",
-    sourceUrl: extraction.sourceUrl ?? null,
-    retrievalMethod: extraction.retrievalMethod ?? "saved-json",
     timeRange: extraction.timeRange ?? null,
-    extractedAt: extraction.extractedAt ?? null,
-    searchedAt: new Date().toISOString(),
     candidateDecks: extraction.decks,
-    ...search,
+    warDecks: findValidWarDecks(extraction.decks),
+  };
+}
+
+async function createWarDeckResultFromOptions(options = {}, extractionProvider = extractPopularDecks) {
+  const deckFilters = normalizeDeckFilters(options.deckFilters);
+
+  if (!hasActiveDeckFilters(deckFilters)) {
+    return createWarDeckResult(await extractionProvider(options));
+  }
+
+  const candidateDecks = [];
+  const poolCache = new Map();
+  const candidatePools = [];
+  let timeRange = null;
+
+  for (const filter of deckFilters) {
+    const key = deckFilterKey(filter);
+
+    if (!poolCache.has(key)) {
+      const extraction = await extractionProvider({
+        ...options,
+        includeCards: filter.include,
+        excludeCards: filter.exclude,
+      });
+      const indexes = extraction.decks.map((deck) => {
+        candidateDecks.push(deck);
+        return candidateDecks.length - 1;
+      });
+
+      timeRange = timeRange ?? extraction.timeRange ?? null;
+      poolCache.set(key, indexes);
+    }
+
+    candidatePools.push(poolCache.get(key));
+  }
+
+  return {
+    timeRange,
+    candidateDecks,
+    warDecks: findValidWarDecksFromPools(candidateDecks, candidatePools),
   };
 }
 
@@ -195,8 +296,7 @@ async function main() {
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
     await fs.writeFile(outputPath, json, "utf8");
     process.stderr.write(
-      `Examined ${result.examinedCombinations} combinations and found ` +
-        `${result.validWarDeckCount} valid war decks; wrote ${outputPath}\n`,
+      `Found ${result.warDecks.length} valid war decks; wrote ${outputPath}\n`,
     );
   } else {
     process.stdout.write(json);
@@ -211,8 +311,10 @@ if (require.main === module) {
 }
 
 module.exports = {
-  countFourDeckCombinations,
   createWarDeckResult,
+  createWarDeckResultFromOptions,
   findValidWarDecks,
+  findValidWarDecksFromPools,
+  normalizeDeckFilters,
   parseArguments,
 };
