@@ -39,7 +39,9 @@ function parseApiOptions(url) {
     throw new RequestError("time must be 1, 3, or 7");
   }
 
-  return { days, refresh, deckFilters };
+  // 30 candidate decks (RoyaleAPI's max) — more candidates means far more
+  // valid four-deck combinations than the default 20.
+  return { days, refresh, deckFilters, size: 30 };
 }
 
 function parseDeckFilters(url) {

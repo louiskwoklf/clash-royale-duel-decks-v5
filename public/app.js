@@ -3,16 +3,55 @@
 const PAGE_SIZE = 8;
 const DECK_SLOT_SIZE = 8;
 
+// Community-recognized win-condition cards, in priority order: when a deck
+// contains several, the earliest entry is treated as the deck's win condition.
+const WIN_CONDITIONS = [
+  "golem",
+  "lava-hound",
+  "electro-giant",
+  "elixir-golem",
+  "goblin-giant",
+  "giant",
+  "royal-giant",
+  "rune-giant",
+  "x-bow",
+  "mortar",
+  "hog-rider",
+  "royal-hogs",
+  "ram-rider",
+  "battle-ram",
+  "wall-breakers",
+  "balloon",
+  "graveyard",
+  "miner",
+  "goblin-drill",
+  "goblin-barrel",
+  "skeleton-barrel",
+  "three-musketeers",
+  "goblin-demolisher",
+  "goblin-machine",
+  "boss-bandit",
+  "giant-skeleton",
+  "pekka",
+  "mega-knight",
+];
+
 const elements = {
   cardPickerGrid: document.querySelector("#card-picker-grid"),
   clearDeckButton: document.querySelector("#clear-deck-button"),
   deckSlotGrid: document.querySelector("#deck-slot-grid"),
+  filterModal: document.querySelector("#filter-modal"),
+  filterCloseButton: document.querySelector("#filter-close-button"),
+  filterDoneButton: document.querySelector("#filter-done-button"),
+  pagination: document.querySelector("#pagination"),
+  plannerIncludeButton: document.querySelector("#planner-include-button"),
+  plannerExcludeButton: document.querySelector("#planner-exclude-button"),
+  plannerExcludeStrip: document.querySelector("#planner-exclude-strip"),
   emptyMessage: document.querySelector("#empty-message"),
   emptyState: document.querySelector("#empty-state"),
   emptyTitle: document.querySelector("#empty-title"),
   excludeStrip: document.querySelector("#exclude-card-strip"),
   filterDeckName: document.querySelector("#filter-deck-name"),
-  loadMore: document.querySelector("#load-more"),
   pickerModeTabs: [...document.querySelectorAll(".picker-mode-tab")],
   rangeTabs: [...document.querySelectorAll(".range-tab")],
   refreshButton: document.querySelector("#refresh-button"),
@@ -27,10 +66,11 @@ const state = {
   controller: null,
   data: null,
   days: 1,
-  deckFilters: Array.from({ length: 4 }, () => ({ include: [], exclude: [] })),
+  deckFilters: Array.from({ length: 4 }, () => ({ include: [] })),
+  globalExclude: [],
   loading: false,
   pickerMode: "include",
-  visibleCount: PAGE_SIZE,
+  page: 0,
 };
 
 function makeElement(tagName, className, text) {
@@ -67,17 +107,47 @@ function resetSearchResults() {
   state.controller?.abort();
   state.controller = null;
   state.data = null;
-  state.visibleCount = PAGE_SIZE;
+  state.page = 0;
   elements.resultsList.replaceChildren();
   elements.emptyState.classList.add("hidden");
-  elements.loadMore.classList.add("hidden");
+  elements.pagination.classList.add("hidden");
+  elements.pagination.replaceChildren();
   elements.resultsSummary.textContent = "";
+  document.body.classList.remove("results-stale");
   setLoading(false);
+}
+
+// Filters changed after a search: keep the results visible but flag them as
+// outdated instead of wiping the list.
+function markResultsStale() {
+  state.controller?.abort();
+  state.controller = null;
+  if (state.loading) setLoading(false);
+
+  if (!state.data) {
+    resetSearchResults();
+    return;
+  }
+
+  document.body.classList.add("results-stale");
+  render();
 }
 
 function setActiveDeckFilter(index) {
   state.activeDeckFilter = index;
   renderDeckFilterPanel();
+}
+
+function openFilterModal(index) {
+  setActiveDeckFilter(index);
+  elements.filterModal.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+  elements.filterCloseButton.focus();
+}
+
+function closeFilterModal() {
+  elements.filterModal.classList.add("hidden");
+  document.body.classList.remove("modal-open");
 }
 
 function setPickerMode(mode) {
@@ -91,36 +161,51 @@ function setPickerMode(mode) {
 }
 
 function changeDeckFilter(deckIndex, mode, cardKey, action) {
-  const filter = state.deckFilters[deckIndex];
-  const oppositeMode = mode === "include" ? "exclude" : "include";
-
-  if (action === "add") {
-    if (mode === "include" && filter.include.length >= DECK_SLOT_SIZE) {
-      return;
+  if (mode === "exclude") {
+    // Exclusions are global: they apply to all four decks.
+    if (action === "add") {
+      if (!state.globalExclude.includes(cardKey)) {
+        state.globalExclude = [...state.globalExclude, cardKey];
+      }
+      state.deckFilters.forEach((filter) => {
+        filter.include = filter.include.filter((key) => key !== cardKey);
+      });
+    } else {
+      state.globalExclude = state.globalExclude.filter((key) => key !== cardKey);
     }
-
-    if (!filter[mode].includes(cardKey)) {
-      filter[mode] = [...filter[mode], cardKey];
-    }
-    filter[oppositeMode] = filter[oppositeMode].filter((key) => key !== cardKey);
   } else {
-    filter[mode] = filter[mode].filter((key) => key !== cardKey);
+    const filter = state.deckFilters[deckIndex];
+
+    if (action === "add") {
+      if (filter.include.length >= DECK_SLOT_SIZE) {
+        return;
+      }
+
+      if (!filter.include.includes(cardKey)) {
+        filter.include = [...filter.include, cardKey];
+      }
+      state.globalExclude = state.globalExclude.filter((key) => key !== cardKey);
+    } else {
+      filter.include = filter.include.filter((key) => key !== cardKey);
+    }
   }
 
   renderDeckFilterPanel();
-  resetSearchResults();
+  markResultsStale();
 }
 
 function togglePickerCard(cardKey) {
-  const filter = activeDeckFilter();
-  const selected = filter[state.pickerMode].includes(cardKey);
+  const selected =
+    state.pickerMode === "exclude"
+      ? state.globalExclude.includes(cardKey)
+      : activeDeckFilter().include.includes(cardKey);
   changeDeckFilter(state.activeDeckFilter, state.pickerMode, cardKey, selected ? "remove" : "add");
 }
 
 function clearActiveDeckFilter() {
-  state.deckFilters[state.activeDeckFilter] = { include: [], exclude: [] };
+  state.deckFilters[state.activeDeckFilter] = { include: [] };
   renderDeckFilterPanel();
-  resetSearchResults();
+  markResultsStale();
 }
 
 function createCardImage(key, className = "card-art") {
@@ -128,6 +213,9 @@ function createCardImage(key, className = "card-art") {
   image.src = cardImagePath(key);
   image.alt = cardNameForKey(key);
   image.loading = "lazy";
+  // Intrinsic size: reserves correct space before the image decodes
+  image.width = 150;
+  image.height = 180;
   return image;
 }
 
@@ -155,11 +243,11 @@ function createDeckSlot(deckIndex) {
   button.setAttribute("role", "button");
   button.classList.toggle("active", isActive);
   button.setAttribute("aria-pressed", String(isActive));
-  button.addEventListener("click", () => setActiveDeckFilter(deckIndex));
+  button.addEventListener("click", () => openFilterModal(deckIndex));
   button.addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      setActiveDeckFilter(deckIndex);
+      openFilterModal(deckIndex);
     }
   });
 
@@ -186,11 +274,13 @@ function renderDeckSlots() {
 }
 
 function renderExcludeStrip() {
-  const excluded = activeDeckFilter().exclude;
-  elements.excludeStrip.replaceChildren(
-    ...excluded.map((cardKey) => createSelectedCardTile(state.activeDeckFilter, "exclude", cardKey)),
-  );
+  const excluded = state.globalExclude;
+  const makeTiles = () =>
+    excluded.map((cardKey) => createSelectedCardTile(state.activeDeckFilter, "exclude", cardKey));
+  elements.excludeStrip.replaceChildren(...makeTiles());
   elements.excludeStrip.classList.toggle("hidden", excluded.length === 0);
+  elements.plannerExcludeStrip.replaceChildren(...makeTiles());
+  elements.plannerExcludeStrip.classList.toggle("hidden", excluded.length === 0);
 }
 
 function createPickerCard(card) {
@@ -198,10 +288,10 @@ function createPickerCard(card) {
   button.type = "button";
   button.dataset.cardKey = card.key;
   button.title = card.name;
-  button.append(
-    createCardImage(card.key, "picker-card-art"),
-    makeElement("span", "picker-card-state hidden"),
-  );
+  const art = createCardImage(card.key, "picker-card-art");
+  // Eager: lazy decode inside the scrollable picker grid paints cards partially
+  art.loading = "eager";
+  button.append(art, makeElement("span", "picker-card-state hidden"));
 
   button.addEventListener("click", () => togglePickerCard(card.key));
   return button;
@@ -211,7 +301,7 @@ function updatePickerCardState(button) {
   const cardKey = button.dataset.cardKey;
   const filter = activeDeckFilter();
   const isIncluded = filter.include.includes(cardKey);
-  const isExcluded = filter.exclude.includes(cardKey);
+  const isExcluded = state.globalExclude.includes(cardKey);
   const stateBadge = button.querySelector(".picker-card-state");
 
   button.classList.toggle("included", isIncluded);
@@ -239,8 +329,7 @@ function renderCardPicker() {
 
 function renderDeckFilterPanel() {
   elements.filterDeckName.textContent = `Deck ${state.activeDeckFilter + 1}`;
-  elements.clearDeckButton.hidden =
-    activeDeckFilter().include.length === 0 && activeDeckFilter().exclude.length === 0;
+  elements.clearDeckButton.hidden = activeDeckFilter().include.length === 0;
   renderDeckSlots();
   renderExcludeStrip();
   updatePickerSelectionState();
@@ -257,7 +346,7 @@ function setLoading(loading) {
   if (loading) {
     elements.resultsList.replaceChildren(createLoadingSkeleton(), createLoadingSkeleton());
     elements.emptyState.classList.add("hidden");
-    elements.loadMore.classList.add("hidden");
+    elements.pagination.classList.add("hidden");
   }
 }
 
@@ -275,6 +364,123 @@ function candidateForIndex(index) {
   return state.data?.candidateDecks[index] ?? null;
 }
 
+function baseCardKey(cardKey) {
+  return cardKey.replace(/-(?:ev\d+|hero)$/u, "");
+}
+
+// Map a deck to its well-known archetype name (Log Bait, Hog 2.6, Pekka
+// Bridge Spam, ...). Checked in order: bait/siege first, then the cards that
+// define an archetype outright, then generic fallbacks.
+function deckArchetype(baseKeys) {
+  const keys = new Set(baseKeys);
+  const has = (...cards) => cards.every((card) => keys.has(card));
+  const any = (...cards) => cards.some((card) => keys.has(card));
+
+  if (has("goblin-barrel")) {
+    if (has("mortar")) return "Mortar Bait";
+    if (any("princess", "goblin-gang", "dart-goblin")) return "Log Bait";
+    return "Barrel Bait";
+  }
+  if (has("mortar")) return has("miner") ? "Mortar Miner" : "Mortar Cycle";
+  if (has("x-bow")) return "X-Bow";
+  if (has("hog-rider")) {
+    if (has("earthquake")) return "Hog EQ";
+    if (has("executioner", "tornado")) return "Hog Exenado";
+    if (has("cannon") && any("musketeer", "ice-golem")) return "Hog 2.6";
+    return "Hog Cycle";
+  }
+  if (has("pekka")) {
+    return any("battle-ram", "bandit", "royal-ghost", "ram-rider")
+      ? "Pekka Bridge Spam"
+      : "Pekka Control";
+  }
+  if (has("golem")) return "Golem Beatdown";
+  if (has("lava-hound")) return has("balloon") ? "LavaLoon" : "Lava Hound";
+  if (has("electro-giant")) return "Electro Giant";
+  if (has("goblin-giant")) return has("sparky") ? "GobGiant Sparky" : "Goblin Giant";
+  if (has("royal-giant")) return "Royal Giant";
+  if (has("giant")) return any("prince", "dark-prince") ? "Giant Double Prince" : "Giant Beatdown";
+  if (has("elixir-golem")) return has("battle-healer") ? "EGolem Healer" : "Elixir Golem";
+  if (has("graveyard")) return has("freeze") ? "GY Freeze" : "Graveyard";
+  if (has("three-musketeers")) return "3M";
+  if (has("royal-hogs")) return has("royal-recruits") ? "RR Hogs" : "Royal Hogs";
+  if (has("ram-rider")) return "Ram Rider";
+  if (has("battle-ram")) return "Bridge Spam";
+  if (has("balloon")) return has("lumberjack") ? "LumberLoon" : "Balloon Cycle";
+  if (has("miner")) {
+    if (has("poison")) return "Miner Poison";
+    if (has("wall-breakers")) return "Miner WB";
+    return "Miner Control";
+  }
+  if (has("goblin-drill")) return has("wall-breakers") ? "WB Drill" : "Goblin Drill";
+  if (has("wall-breakers")) return "Wall Breakers";
+  if (has("skeleton-barrel")) return "SkellyBarrel Bait";
+  if (has("sparky")) return "Sparky";
+  if (has("mega-knight")) {
+    return any("battle-ram", "bandit", "ram-rider") ? "MK Bridge Spam" : "Mega Knight";
+  }
+  if (has("giant-skeleton")) return "Giant Skelly";
+  if (has("goblin-machine")) return "Goblin Machine";
+  if (has("rocket")) return "Rocket Cycle";
+  return "Cycle";
+}
+
+// A deck's label is its archetype; when `extended`, append a distinguishing
+// card (second win condition, else champion, hero, or evolution) so bundles
+// with identical archetype lines can be told apart.
+function deckIdentity(deck, extended = false) {
+  const cardKeys = deck?.cards?.length === 8 ? deck.cards : deck?.baseCards ?? [];
+  const baseKeys = cardKeys.map(baseCardKey);
+  const matches = WIN_CONDITIONS.filter((key) => baseKeys.includes(key));
+  const primary = deckArchetype(baseKeys);
+
+  if (!extended) return primary;
+
+  const cards = cardKeys.map((key) => state.cardLookup.get(key)).filter(Boolean);
+  const extraKey =
+    cards.find((card) => card.rarity === "Champion")?.key ??
+    cards.find((card) => card.kind === "hero")?.key ??
+    cards.find((card) => card.kind === "evolution")?.key ??
+    matches.find((key) => !primary.includes(cardNameForKey(key)));
+
+  return extraKey ? `${primary} (${cardNameForKey(extraKey)})` : primary;
+}
+
+function bundleWinConditions(warDeck, extended = false) {
+  return warDeck.candidateIndexes
+    .map((candidateIndex) => deckIdentity(candidateForIndex(candidateIndex), extended))
+    .join(" · ");
+}
+
+function cardDisplayGroup(cardKey) {
+  const card = state.cardLookup.get(cardKey);
+  if (card?.kind === "evolution" || /-ev\d+$/u.test(cardKey)) return "evolution";
+  if (card?.kind === "hero" || card?.rarity === "Champion" || /-hero$/u.test(cardKey)) {
+    return "hero";
+  }
+  return "normal";
+}
+
+// Display order inside a deck: evolution first, hero/champion second, any
+// remaining evolutions or heroes next, then the regular cards.
+// Names come from the card catalog: the scraped cardNames array is not
+// aligned with the cards array, so pairing by index mislabels cards.
+function orderDeckCards(cardKeys) {
+  const entries = cardKeys.map((key) => ({
+    key,
+    name: cardNameForKey(key),
+  }));
+  const evolutions = entries.filter((entry) => cardDisplayGroup(entry.key) === "evolution");
+  const heroes = entries.filter((entry) => cardDisplayGroup(entry.key) === "hero");
+  const normal = entries.filter((entry) => cardDisplayGroup(entry.key) === "normal");
+
+  const ordered = [];
+  if (evolutions.length > 0) ordered.push(evolutions.shift());
+  if (heroes.length > 0) ordered.push(heroes.shift());
+  ordered.push(...evolutions, ...heroes, ...normal);
+  return ordered;
+}
+
 function createDeckPanel(deck, rank) {
   const panel = makeElement("section", "deck-panel");
   const header = makeElement("div", "deck-panel-header");
@@ -286,43 +492,41 @@ function createDeckPanel(deck, rank) {
 
   const cards = makeElement("div", "result-card-grid");
   const cardKeys = deck?.cards?.length === 8 ? deck.cards : deck?.baseCards ?? [];
-  const cardNames = deck?.cardNames?.length === cardKeys.length
-    ? deck.cardNames
-    : cardKeys.map((key) => cardNameForKey(key));
 
-  cardKeys.forEach((cardKey, index) => {
+  orderDeckCards(cardKeys).forEach((entry) => {
     const figure = makeElement("figure", "result-card-tile");
-    figure.append(
-      createCardImage(cardKey, "result-card-art"),
-      makeElement("figcaption", "", cardNames[index] ?? humanizeSlug(cardKey)),
-    );
+    figure.title = entry.name;
+    figure.append(createCardImage(entry.key, "result-card-art"));
     cards.append(figure);
   });
   panel.append(cards);
 
-  if (deck?.statsUrl) {
-    const link = makeElement("a", "deck-link", "Deck stats ↗");
-    link.href = deck.statsUrl;
-    link.target = "_blank";
-    link.rel = "noreferrer";
-    panel.append(link);
+  const stats = makeElement("div", "deck-stats-row");
+  const elixirCosts = cardKeys.map((key) => state.cardLookup.get(key)?.elixir);
+  if (elixirCosts.length === 8 && elixirCosts.every((cost) => typeof cost === "number")) {
+    const average = elixirCosts.reduce((sum, cost) => sum + cost, 0) / elixirCosts.length;
+    stats.append(makeElement("span", "deck-stat", `Avg Elixir: ${average.toFixed(1)}`));
+  }
+  if (typeof deck?.winRate === "number") {
+    stats.append(makeElement("span", "deck-stat winrate", `Win Rate: ${deck.winRate.toFixed(1)}%`));
+  }
+  if (stats.children.length > 0) {
+    panel.append(stats);
   }
 
   return panel;
 }
 
-function createWarDeckCard(warDeck, index) {
+function createWarDeckCard(warDeck, index, isFirstOnPage, extendedLabel) {
   const details = makeElement("details", "war-card");
-  if (index === 0) details.open = true;
+  if (isFirstOnPage) details.open = true;
 
   const summary = makeElement("summary", "war-card-summary");
   const identity = makeElement("div", "bundle-identity");
   identity.append(
     makeElement("span", "bundle-number", String(index + 1).padStart(2, "0")),
-    makeElement("span", "bundle-title", `Ranks ${warDeck.deckRanks.join(" · ")}`),
+    makeElement("span", "bundle-wincons", bundleWinConditions(warDeck, extendedLabel)),
   );
-  const names = makeElement("span", "bundle-names", warDeck.deckNames.join(" + "));
-  identity.append(names);
 
   const summaryRight = makeElement("div", "summary-right");
   const chevron = makeElement("span", "chevron", "⌄");
@@ -341,12 +545,101 @@ function createWarDeckCard(warDeck, index) {
   return details;
 }
 
+function createPageButton(label, page, { active = false, disabled = false, ariaLabel } = {}) {
+  const button = makeElement("button", "page-button", label);
+  button.type = "button";
+  if (ariaLabel) button.setAttribute("aria-label", ariaLabel);
+  button.classList.toggle("active", active);
+  button.disabled = disabled;
+  button.addEventListener("click", () => {
+    state.page = page;
+    renderResults();
+    elements.resultsList.scrollIntoView({ block: "start" });
+  });
+  return button;
+}
+
+// Page numbers with gaps, e.g. 1 … 4 [5] 6 … 12
+function pageNumbersToShow(totalPages, current) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, page) => page);
+  }
+
+  const wanted = [...new Set([0, current - 1, current, current + 1, totalPages - 1])]
+    .filter((page) => page >= 0 && page < totalPages)
+    .sort((a, b) => a - b);
+
+  const withGaps = [];
+  wanted.forEach((page, index) => {
+    if (index > 0 && page - wanted[index - 1] > 1) withGaps.push("gap");
+    withGaps.push(page);
+  });
+  return withGaps;
+}
+
+function renderPagination(totalPages) {
+  if (totalPages <= 1) {
+    elements.pagination.classList.add("hidden");
+    elements.pagination.replaceChildren();
+    return;
+  }
+
+  const items = [
+    createPageButton("‹", state.page - 1, {
+      disabled: state.page === 0,
+      ariaLabel: "Previous page",
+    }),
+  ];
+
+  pageNumbersToShow(totalPages, state.page).forEach((entry) => {
+    if (entry === "gap") {
+      items.push(makeElement("span", "page-gap", "…"));
+    } else {
+      items.push(
+        createPageButton(String(entry + 1), entry, {
+          active: entry === state.page,
+          ariaLabel: `Page ${entry + 1}`,
+        }),
+      );
+    }
+  });
+
+  items.push(
+    createPageButton("›", state.page + 1, {
+      disabled: state.page === totalPages - 1,
+      ariaLabel: "Next page",
+    }),
+  );
+
+  elements.pagination.classList.remove("hidden");
+  elements.pagination.replaceChildren(...items);
+}
+
 function renderResults() {
   if (!state.data) return;
   const results = state.data.warDecks;
-  const visible = results.slice(0, state.visibleCount);
+  const totalPages = Math.ceil(results.length / PAGE_SIZE);
+  state.page = Math.min(Math.max(state.page, 0), Math.max(totalPages - 1, 0));
+  const start = state.page * PAGE_SIZE;
+  const visible = results.slice(start, start + PAGE_SIZE);
+
+  // Count identical win-condition lines across ALL results so duplicates get
+  // an extended, distinguishing label (stable across pages).
+  const signatureCounts = new Map();
+  results.forEach((warDeck) => {
+    const signature = bundleWinConditions(warDeck);
+    signatureCounts.set(signature, (signatureCounts.get(signature) ?? 0) + 1);
+  });
+
   elements.resultsList.replaceChildren(
-    ...visible.map((warDeck, index) => createWarDeckCard(warDeck, index)),
+    ...visible.map((warDeck, index) =>
+      createWarDeckCard(
+        warDeck,
+        start + index,
+        index === 0,
+        signatureCounts.get(bundleWinConditions(warDeck)) > 1,
+      ),
+    ),
   );
 
   elements.resultsSummary.textContent = `${formatNumber(results.length)} bundles found`;
@@ -354,14 +647,11 @@ function renderResults() {
   const isEmpty = results.length === 0;
   elements.emptyState.classList.toggle("hidden", !isEmpty);
   if (isEmpty) {
-    elements.emptyTitle.textContent = "No valid war decks";
-    elements.emptyMessage.textContent = "This meta window has no four-deck bundles with 32 unique cards.";
+    elements.emptyTitle.textContent = "No valid duel decks";
+    elements.emptyMessage.textContent = "This meta window has no four-deck combinations with 32 unique cards.";
   }
 
-  elements.loadMore.classList.toggle("hidden", visible.length >= results.length || isEmpty);
-  if (visible.length < results.length) {
-    elements.loadMore.textContent = `Show ${Math.min(PAGE_SIZE, results.length - visible.length)} more bundles`;
-  }
+  renderPagination(isEmpty ? 0 : totalPages);
 }
 
 function render() {
@@ -372,7 +662,7 @@ function appendDeckFilters(query) {
   state.deckFilters.forEach((filter, index) => {
     const deckNumber = index + 1;
     filter.include.forEach((cardKey) => query.append(`d${deckNumber}inc`, cardKey));
-    filter.exclude.forEach((cardKey) => query.append(`d${deckNumber}exc`, cardKey));
+    state.globalExclude.forEach((cardKey) => query.append(`d${deckNumber}exc`, cardKey));
   });
 }
 
@@ -380,6 +670,7 @@ async function loadWarDecks({ refresh = false } = {}) {
   state.controller?.abort();
   const controller = new AbortController();
   state.controller = controller;
+  document.body.classList.remove("results-stale");
   setLoading(true);
 
   try {
@@ -396,7 +687,7 @@ async function loadWarDecks({ refresh = false } = {}) {
     }
 
     state.data = data;
-    state.visibleCount = PAGE_SIZE;
+    state.page = 0;
     render();
   } catch (error) {
     if (error.name === "AbortError") return;
@@ -425,7 +716,9 @@ async function loadCards() {
   state.cardLookup = new Map(state.cards.map((card) => [card.key, card]));
   renderDeckFilterPanel();
   renderCardPicker();
-  resetSearchResults();
+  if (!state.loading && !state.data) {
+    resetSearchResults();
+  }
 }
 
 async function initialize() {
@@ -449,7 +742,7 @@ elements.rangeTabs.forEach((tab) => {
       candidate.classList.toggle("active", active);
       candidate.setAttribute("aria-pressed", String(active));
     });
-    resetSearchResults();
+    markResultsStale();
   });
 });
 
@@ -463,9 +756,30 @@ elements.pickerModeTabs.forEach((tab) => {
 
 elements.clearDeckButton.addEventListener("click", clearActiveDeckFilter);
 
-elements.loadMore.addEventListener("click", () => {
-  state.visibleCount += PAGE_SIZE;
-  renderResults();
+elements.filterCloseButton.addEventListener("click", closeFilterModal);
+
+elements.filterModal.addEventListener("click", (event) => {
+  if (event.target === elements.filterModal) {
+    closeFilterModal();
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !elements.filterModal.classList.contains("hidden")) {
+    closeFilterModal();
+  }
+});
+
+elements.filterDoneButton.addEventListener("click", closeFilterModal);
+
+elements.plannerIncludeButton.addEventListener("click", () => {
+  openFilterModal(state.activeDeckFilter);
+  setPickerMode("include");
+});
+
+elements.plannerExcludeButton.addEventListener("click", () => {
+  openFilterModal(state.activeDeckFilter);
+  setPickerMode("exclude");
 });
 
 initialize();

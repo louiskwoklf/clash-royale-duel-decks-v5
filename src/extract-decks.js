@@ -61,6 +61,7 @@ function normalizeCardSlug(slug) {
 
 function parseDeckStatsHref(href) {
   const url = new URL(href, ROYALE_API_ORIGIN);
+  url.protocol = "https:";
   const prefix = "/decks/stats/";
 
   if (!url.pathname.startsWith(prefix)) {
@@ -98,7 +99,12 @@ async function extractDecksFromPage(page) {
         ),
       ];
 
-      return { rank: index + 1, name, statsHref, cardNames };
+      // Wins / draws / losses render as three consecutive percentages
+      const statsText = segment.textContent ?? "";
+      const winsMatch = statsText.match(/([\d.]+)%\s*[\d.]+%\s*[\d.]+%/u);
+      const winRate = winsMatch ? Number.parseFloat(winsMatch[1]) : null;
+
+      return { rank: index + 1, name, statsHref, cardNames, winRate };
     }),
   );
 }
@@ -115,7 +121,7 @@ function parseDecksFromMarkdown(markdown) {
     const section = markdown.slice(sectionStart, sectionEnd);
     const statsUrls = [
       ...new Set(
-        [...section.matchAll(/https:\/\/royaleapi\.com\/decks\/stats\/[^)\s]+/gu)].map(
+        [...section.matchAll(/https?:\/\/royaleapi\.com\/decks\/stats\/[^)\s]+/gu)].map(
           (match) => match[0],
         ),
       ),
@@ -133,10 +139,17 @@ function parseDecksFromMarkdown(markdown) {
       ),
     ];
 
+    // Stats row looks like: | 67 | 1841 | 60.2% | 0.1% | 39.8% |
+    const statsRow = section.match(
+      /\|\s*[\d,]+\s*\|\s*[\d.,%]+\s*\|\s*([\d.]+)%\s*\|\s*[\d.]+%\s*\|\s*[\d.]+%\s*\|/u,
+    );
+    const winRate = statsRow ? Number.parseFloat(statsRow[1]) : null;
+
     decks.push({
       rank: decks.length + 1,
       name: heading[1].trim(),
       cardNames,
+      winRate,
       ...parseDeckStatsHref(statsUrls[0]),
     });
   }
@@ -169,18 +182,33 @@ async function extractPopularDecksThroughProxy({
   const sourceUrl = buildPopularDecksUrl({ days, size, includeCards, excludeCards });
   const source = new URL(sourceUrl);
   const proxyUrl = `https://r.jina.ai/http://royaleapi.com${source.pathname}${source.search}`;
-  const response = await fetch(proxyUrl, {
-    headers: { Accept: "text/plain" },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
 
-  if (!response.ok) {
-    throw new Error(`Read-only proxy returned HTTP ${response.status}.`);
+  // Cold fetches through the read-only proxy occasionally drop; one retry
+  // after a short pause is usually enough.
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const response = await fetch(proxyUrl, {
+        headers: { Accept: "text/plain" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Read-only proxy returned HTTP ${response.status}.`);
+      }
+
+      const markdown = await response.text();
+      const decks = parseDecksFromMarkdown(markdown);
+      return createResult({ days, size, decks });
+    } catch (error) {
+      lastError = error;
+      if (attempt === 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
   }
 
-  const markdown = await response.text();
-  const decks = parseDecksFromMarkdown(markdown);
-  return createResult({ days, size, decks });
+  throw lastError;
 }
 
 async function extractPopularDecksThroughBrowser({
@@ -190,14 +218,24 @@ async function extractPopularDecksThroughBrowser({
   excludeCards = [],
   timeoutMs = 90_000,
   chromePath,
+  headful = false,
   profilePath = path.resolve(".cache/royaleapi-browser"),
 } = {}) {
   const { chromium } = require("playwright");
   const sourceUrl = buildPopularDecksUrl({ days, size, includeCards, excludeCards });
   const launchOptions = {
-    headless: false,
+    headless: !headful,
     viewport: { width: 1280, height: 900 },
   };
+
+  if (!headful) {
+    // Headless Chrome advertises "HeadlessChrome" in its user agent, which
+    // Cloudflare rejects outright. Present the regular Chrome UA instead so the
+    // clearance cookies in the persistent profile stay valid.
+    launchOptions.userAgent =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+      "(KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
+  }
 
   if (chromePath) {
     launchOptions.executablePath = chromePath;
@@ -224,7 +262,7 @@ async function extractPopularDecksThroughBrowser({
       throw new Error(
         `RoyaleAPI deck data did not appear within ${timeoutMs}ms ` +
           `(initial HTTP status ${response?.status() ?? "unknown"}, page title ${JSON.stringify(title)}). ` +
-          "Leave the Chrome window open while any automatic Cloudflare check completes.",
+          "If Cloudflare is blocking headless access, run the extractor manually with --headful once to clear the check.",
       );
     }
 
@@ -258,16 +296,23 @@ async function extractPopularDecks(options = {}) {
     throw new Error(`Method must be auto, proxy, or browser; received ${method}.`);
   }
 
-  try {
-    return await extractPopularDecksThroughProxy(options);
-  } catch (proxyError) {
+  // The proxy is cheap and invisible; give it two attempts before reaching for
+  // the local browser fallback.
+  let proxyError;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      return await extractPopularDecksThroughBrowser(options);
-    } catch (browserError) {
-      throw new Error(
-        `Both extraction routes failed. Proxy: ${proxyError.message} Browser: ${browserError.message}`,
-      );
+      return await extractPopularDecksThroughProxy(options);
+    } catch (error) {
+      proxyError = error;
     }
+  }
+
+  try {
+    return await extractPopularDecksThroughBrowser(options);
+  } catch (browserError) {
+    throw new Error(
+      `Both extraction routes failed. Proxy: ${proxyError.message} Browser: ${browserError.message}`,
+    );
   }
 }
 
@@ -295,6 +340,8 @@ function parseArguments(argv) {
     } else if (argument === "--chrome-path") {
       options.chromePath = value;
       index += 1;
+    } else if (argument === "--headful") {
+      options.headful = true;
     } else if (argument === "--method") {
       options.method = value;
       index += 1;
@@ -324,6 +371,7 @@ Options:
   --output FILE      Write JSON to a file instead of stdout
   --method METHOD    auto, proxy, or browser (default: auto)
   --chrome-path FILE Use a specific Chrome/Chromium executable
+  --headful          Show the browser window (needed once if Cloudflare blocks headless)
   --help              Show this help
 `;
 }
