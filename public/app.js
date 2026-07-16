@@ -3,39 +3,6 @@
 const PAGE_SIZE = 8;
 const DECK_SLOT_SIZE = 8;
 
-// Community-recognized win-condition cards, in priority order: when a deck
-// contains several, the earliest entry is treated as the deck's win condition.
-const WIN_CONDITIONS = [
-  "golem",
-  "lava-hound",
-  "electro-giant",
-  "elixir-golem",
-  "goblin-giant",
-  "giant",
-  "royal-giant",
-  "rune-giant",
-  "x-bow",
-  "mortar",
-  "hog-rider",
-  "royal-hogs",
-  "ram-rider",
-  "battle-ram",
-  "wall-breakers",
-  "balloon",
-  "graveyard",
-  "miner",
-  "goblin-drill",
-  "goblin-barrel",
-  "skeleton-barrel",
-  "three-musketeers",
-  "goblin-demolisher",
-  "goblin-machine",
-  "boss-bandit",
-  "giant-skeleton",
-  "pekka",
-  "mega-knight",
-];
-
 const elements = {
   cardPickerGrid: document.querySelector("#card-picker-grid"),
   clearDeckButton: document.querySelector("#clear-deck-button"),
@@ -425,30 +392,16 @@ function deckArchetype(baseKeys) {
   return "Cycle";
 }
 
-// A deck's label is its archetype; when `extended`, append a distinguishing
-// card (second win condition, else champion, hero, or evolution) so bundles
-// with identical archetype lines can be told apart.
-function deckIdentity(deck, extended = false) {
+// A deck's label is its well-known archetype name.
+function deckIdentity(deck) {
   const cardKeys = deck?.cards?.length === 8 ? deck.cards : deck?.baseCards ?? [];
   const baseKeys = cardKeys.map(baseCardKey);
-  const matches = WIN_CONDITIONS.filter((key) => baseKeys.includes(key));
-  const primary = deckArchetype(baseKeys);
-
-  if (!extended) return primary;
-
-  const cards = cardKeys.map((key) => state.cardLookup.get(key)).filter(Boolean);
-  const extraKey =
-    cards.find((card) => card.rarity === "Champion")?.key ??
-    cards.find((card) => card.kind === "hero")?.key ??
-    cards.find((card) => card.kind === "evolution")?.key ??
-    matches.find((key) => !primary.includes(cardNameForKey(key)));
-
-  return extraKey ? `${primary} (${cardNameForKey(extraKey)})` : primary;
+  return deckArchetype(baseKeys);
 }
 
-function bundleWinConditions(warDeck, extended = false) {
+function bundleWinConditions(warDeck) {
   return warDeck.candidateIndexes
-    .map((candidateIndex) => deckIdentity(candidateForIndex(candidateIndex), extended))
+    .map((candidateIndex) => deckIdentity(candidateForIndex(candidateIndex)))
     .join(" · ");
 }
 
@@ -517,7 +470,7 @@ function createDeckPanel(deck, rank) {
   return panel;
 }
 
-function createWarDeckCard(warDeck, index, isFirstOnPage, extendedLabel) {
+function createWarDeckCard(warDeck, index, isFirstOnPage) {
   const details = makeElement("details", "war-card");
   if (isFirstOnPage) details.open = true;
 
@@ -525,7 +478,7 @@ function createWarDeckCard(warDeck, index, isFirstOnPage, extendedLabel) {
   const identity = makeElement("div", "bundle-identity");
   identity.append(
     makeElement("span", "bundle-number", String(index + 1).padStart(2, "0")),
-    makeElement("span", "bundle-wincons", bundleWinConditions(warDeck, extendedLabel)),
+    makeElement("span", "bundle-wincons", bundleWinConditions(warDeck)),
   );
 
   const summaryRight = makeElement("div", "summary-right");
@@ -623,23 +576,8 @@ function renderResults() {
   const start = state.page * PAGE_SIZE;
   const visible = results.slice(start, start + PAGE_SIZE);
 
-  // Count identical win-condition lines across ALL results so duplicates get
-  // an extended, distinguishing label (stable across pages).
-  const signatureCounts = new Map();
-  results.forEach((warDeck) => {
-    const signature = bundleWinConditions(warDeck);
-    signatureCounts.set(signature, (signatureCounts.get(signature) ?? 0) + 1);
-  });
-
   elements.resultsList.replaceChildren(
-    ...visible.map((warDeck, index) =>
-      createWarDeckCard(
-        warDeck,
-        start + index,
-        index === 0,
-        signatureCounts.get(bundleWinConditions(warDeck)) > 1,
-      ),
-    ),
+    ...visible.map((warDeck, index) => createWarDeckCard(warDeck, start + index, index === 0)),
   );
 
   elements.resultsSummary.textContent = `${formatNumber(results.length)} bundles found`;
