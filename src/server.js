@@ -15,6 +15,7 @@ const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1000;
 const WAR_DECK_SIZE = 4;
 const PUBLIC_DIRECTORY = path.resolve(__dirname, "../public");
 const CARD_IMAGE_DIRECTORY = path.join(PUBLIC_DIRECTORY, "cards");
+const MEDIA_DIRECTORY = path.join(PUBLIC_DIRECTORY, "media");
 
 const STATIC_FILES = new Map([
   ["/", { file: "index.html", type: "text/html; charset=utf-8" }],
@@ -160,6 +161,22 @@ async function serveCardImage(response, pathname) {
   response.end(body);
 }
 
+async function serveMedia(response, pathname) {
+  const match = /^\/media\/([a-z0-9-]+\.mov)$/u.exec(pathname);
+
+  if (!match) {
+    throw new RequestError("Not found", 404);
+  }
+
+  const body = await fs.readFile(path.join(MEDIA_DIRECTORY, match[1]));
+  response.writeHead(200, {
+    "Content-Type": "video/quicktime",
+    "Content-Length": body.length,
+    "Cache-Control": "public, max-age=604800, immutable",
+  });
+  response.end(body);
+}
+
 function createRequestHandler(options = {}) {
   const service = createWarDeckService(options);
 
@@ -192,6 +209,11 @@ function createRequestHandler(options = {}) {
 
       if (url.pathname.startsWith("/cards/")) {
         await serveCardImage(response, url.pathname);
+        return;
+      }
+
+      if (url.pathname.startsWith("/media/")) {
+        await serveMedia(response, url.pathname);
         return;
       }
 

@@ -13,48 +13,70 @@
   </head>
   <body>
     <div class="app-shell">
-      <!-- Top command bar: brand, meta window, primary action -->
+      <!-- Chapter 1: dark nav band — brand only -->
       <header class="site-header">
         <a class="brand" href="/" aria-label="Duel Deck Finder home">
-          <span class="brand-mark" aria-hidden="true">
-            <span></span><span></span><span></span><span></span>
-          </span>
-          <span class="brand-name">
-            <strong>Duel Deck</strong>
-            <small>Finder</small>
-          </span>
+          <svg class="brand-mark" viewBox="0 0 100 112" aria-hidden="true">
+            <defs>
+              <clipPath id="brand-shield-clip">
+                <path d="M50 6 L86 18 V52 C86 76 68 94 50 106 C32 94 14 76 14 52 V18 Z" />
+              </clipPath>
+            </defs>
+            <g clip-path="url(#brand-shield-clip)">
+              <polygon
+                class="brand-shield-blue"
+                points="0,0 55,0 42,28 60,50 40,72 58,94 48,112 0,112"
+              />
+              <polygon
+                class="brand-shield-red"
+                points="100,0 55,0 42,28 60,50 40,72 58,94 48,112 100,112"
+              />
+            </g>
+            <path
+              class="brand-shield-border"
+              d="M50 6 L86 18 V52 C86 76 68 94 50 106 C32 94 14 76 14 52 V18 Z"
+              fill="none"
+            />
+            <path class="brand-shield-bolt" d="M51 43 L40 57 L50 57 L49 67 L60 53 L50 53 Z" />
+          </svg>
+          <span class="brand-name">Duel Deck <strong>Finder</strong></span>
         </a>
-
-        <div class="header-controls">
-          <div class="meta-window-control">
-            <span class="control-label">Meta window</span>
-            <div class="range-tabs" role="group" aria-label="Meta date range">
-              <button class="range-tab active" type="button" data-days="1" aria-pressed="true">
-                1 day
-              </button>
-              <button class="range-tab" type="button" data-days="3" aria-pressed="false">
-                3 days
-              </button>
-              <button class="range-tab" type="button" data-days="7" aria-pressed="false">
-                7 days
-              </button>
-            </div>
-          </div>
-
-          <div class="panel-actions">
-            <button class="refresh-button" id="refresh-button" type="button">
-              <span class="refresh-icon" aria-hidden="true">↻</span>
-              Find decks
-            </button>
-          </div>
-        </div>
       </header>
 
+      <!-- Chapter 2: soft-surface control band — the tool's one job -->
+      <section class="control-strip">
+        <div class="control-strip-copy">
+          <h1>Find your duel decks</h1>
+        </div>
+
+        <div class="control-strip-actions">
+          <span class="meta-label">Meta window</span>
+
+          <div class="range-tabs" role="group" aria-label="Meta date range">
+            <span class="range-tab-indicator" aria-hidden="true"></span>
+            <button class="range-tab active" type="button" data-days="1" aria-pressed="true">
+              1 day
+            </button>
+            <button class="range-tab" type="button" data-days="3" aria-pressed="false">
+              3 days
+            </button>
+            <button class="range-tab" type="button" data-days="7" aria-pressed="false">
+              7 days
+            </button>
+          </div>
+
+          <button class="refresh-button" id="refresh-button" type="button">
+            <span class="refresh-icon" aria-hidden="true">↻</span>
+            Find decks
+          </button>
+        </div>
+      </section>
+
+      <!-- Chapter 3: white canvas body — planner + results -->
       <main class="layout">
-        <!-- Left column: loadout planner (the four deck slots) -->
         <aside class="planner-column">
           <div class="planner-header">
-            <h2 class="planner-heading">Customise Your Decks</h2>
+            <h2 class="planner-heading">Customise your decks</h2>
             <div class="planner-actions">
               <button class="planner-action-button" id="planner-include-button" type="button">
                 + Include
@@ -76,7 +98,6 @@
           <p class="planner-hint">Select a deck to choose its cards.</p>
         </aside>
 
-        <!-- Right column: search results -->
         <section class="results-column">
           <div class="results-toolbar">
             <div>
@@ -104,7 +125,8 @@
         </section>
       </main>
 
-      <footer>
+      <!-- Chapter 4: the one PlayStation Blue band on the page -->
+      <footer class="site-footer">
         <p>Data sourced from RoyaleAPI.</p>
       </footer>
     </div>
@@ -161,6 +183,12 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- Easter egg: double-click "Find decks" to pop this out -->
+    <div class="fun-popup hidden" id="fun-popup" aria-hidden="true">
+      <video id="fun-popup-video" src="/media/reco.mov" playsinline></video>
+      <canvas id="fun-popup-canvas"></canvas>
     </div>
   </body>
 </html>

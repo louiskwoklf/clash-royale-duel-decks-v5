@@ -1,39 +1,54 @@
 /* ==========================================================================
-   War Deck Finder — "night ops console"
-   Dark violet-black HUD, electric cyan command accent, amber for ranks,
-   red for exclusions. Chakra Petch display / IBM Plex Sans body.
+   War Deck Finder — "console launch trailer"
+   Applies the PlayStation marketing system: alternating black / soft / white
+   chapters, PlayStation Blue as the single reserved accent, light-weight
+   display type over a plain Inter body, pill CTAs + 8px cards, no chrome
+   gradients or resting shadows.
    ========================================================================== */
 
-@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Inter:wght@400;500;600;700&display=swap");
 
 /* --- Tokens ------------------------------------------------------------- */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  --bg: #0c0a13;
-  --panel: #14111f;
-  --panel-raised: #1b1729;
-  --panel-inset: #0f0d18;
-  --line: rgba(150, 155, 205, 0.16);
-  --line-strong: rgba(150, 155, 205, 0.3);
+  --blue: #0070d1;
+  --blue-pressed: #0064b7;
+  --blue-active: #004d8d;
+  --on-blue: #ffffff;
 
-  --text: #f0f1fa;
-  --muted: #9297b6;
+  --warning: #c81b3a;
+  --warning-tint: rgba(200, 27, 58, 0.08);
 
-  --cyan: #58e0f0;
-  --cyan-deep: #29b8cc;
-  --cyan-glow: rgba(88, 224, 240, 0.16);
-  --amber: #ffb648;
-  --red: #ff5470;
-  --red-glow: rgba(255, 84, 112, 0.15);
-  --ink: #051016; /* text on cyan */
+  --ink: #000000;
+  --canvas-dark: #000000;
+  --surface-dark-elevated: #121314;
+  --surface-dark-card: #181818;
 
-  --font-display: "Chakra Petch", "Avenir Next Condensed", system-ui, sans-serif;
-  --font-body: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --canvas-light: #ffffff;
+  --surface-soft: #f3f3f3;
+  --surface-card: #f5f7fa;
+  --surface-filter: rgba(245, 247, 250, 0.55);
 
-  --chamfer: 10px;
-  --radius: 4px;
+  --hairline-light: #e7e7e7;
+  --hairline-dark: rgba(229, 229, 229, 0.2);
+
+  --body-light: rgba(0, 0, 0, 0.6);
+  --mute-light: #6b6b6b;
+  --ash-light: #cccccc;
+
+  --on-dark: #ffffff;
+  --body-dark: rgba(255, 255, 255, 0.7);
+  --on-dark-mute: #cccccc;
+
+  --font-display: "Roboto", Arial, Helvetica, sans-serif;
+  --font-body: "Inter", Helvetica, Arial, sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
 }
 
 /* --- Reset & page backdrop ---------------------------------------------- */
@@ -43,32 +58,17 @@
 }
 
 html {
-  background: var(--bg);
+  background: var(--canvas-light);
 }
 
 body {
-  position: relative;
   margin: 0;
   min-height: 100vh;
   font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--text);
-  background: var(--bg);
-}
-
-/* Tactical-grid backdrop; scrolls with the page so painting stays cheap */
-body::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(900px 420px at 50% -120px, rgba(88, 224, 240, 0.09), transparent 70%),
-    radial-gradient(700px 500px at 100% 0%, rgba(122, 88, 240, 0.07), transparent 70%),
-    repeating-linear-gradient(0deg, rgba(150, 155, 205, 0.035) 0 1px, transparent 1px 48px),
-    repeating-linear-gradient(90deg, rgba(150, 155, 205, 0.035) 0 1px, transparent 1px 48px);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--canvas-light);
 }
 
 img {
@@ -87,12 +87,13 @@ button {
 
 button:disabled {
   cursor: default;
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
 h1, h2, h3 {
   font-family: var(--font-display);
-  line-height: 1.2;
+  font-weight: 300;
+  line-height: 1.25;
   margin: 0;
 }
 
@@ -101,48 +102,23 @@ h1, h2, h3 {
 }
 
 :focus-visible {
-  outline: 2px solid var(--cyan);
+  outline: 2px solid var(--blue);
   outline-offset: 2px;
 }
 
 .app-shell {
   max-width: 1440px;
   margin: 0 auto;
-  padding: 0 28px 40px;
 }
 
-/* Small caps eyebrow used at the top of each column */
-.column-eyebrow {
-  margin: 0 0 10px;
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.column-eyebrow::before {
-  content: "";
-  display: inline-block;
-  width: 18px;
-  height: 2px;
-  background: var(--cyan);
-  margin-right: 8px;
-  vertical-align: middle;
-}
-
-/* --- Header: brand + meta window + primary action ----------------------- */
+/* --- Chapter 1: dark nav band -------------------------------------------- */
 
 .site-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  flex-wrap: wrap;
-  padding: 18px 0;
-  margin-bottom: 26px;
-  border-bottom: 1px solid var(--line);
+  height: 56px;
+  padding: 0 32px;
+  background: var(--canvas-dark);
 }
 
 .brand {
@@ -150,129 +126,205 @@ h1, h2, h3 {
   align-items: center;
   gap: 12px;
   text-decoration: none;
-  color: var(--text);
+  color: var(--on-dark);
 }
 
-/* Four rotated squares — a mini "war party" sigil */
 .brand-mark {
-  display: grid;
-  grid-template-columns: repeat(2, 11px);
-  gap: 4px;
-  rotate: 45deg;
+  width: 24px;
+  height: 27px;
+  filter: drop-shadow(0 0 6px rgba(0, 112, 209, 0.65));
+  animation: brand-pulse 2.4s ease-in-out infinite;
 }
 
-.brand-mark span {
-  width: 11px;
-  height: 11px;
-  background: var(--cyan);
-  box-shadow: 0 0 10px var(--cyan-glow);
+.brand-shield-blue {
+  fill: var(--blue);
 }
 
-.brand-mark span:nth-child(2) {
-  background: transparent;
-  border: 2px solid var(--cyan-deep);
+.brand-shield-red {
+  fill: var(--warning);
 }
 
-.brand-mark span:nth-child(3) {
-  background: transparent;
-  border: 2px solid var(--cyan-deep);
+.brand-shield-border {
+  stroke: #f5a623;
+  stroke-width: 5;
+}
+
+.brand-shield-bolt {
+  fill: #ffffff;
+  stroke: #f5a623;
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+@keyframes brand-pulse {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(0, 112, 209, 0.45)); }
+  50% { filter: drop-shadow(0 0 9px rgba(0, 112, 209, 0.8)); }
 }
 
 .brand-name {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
   font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0.1px;
 }
 
 .brand-name strong {
-  font-size: 20px;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
-.brand-name small {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.26em;
-  text-transform: uppercase;
-  color: var(--cyan);
-}
+/* --- Chapter 2: soft-surface control band -------------------------------- */
 
-.header-controls {
+.control-strip {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
-  gap: 22px;
+  justify-content: space-between;
+  gap: 32px;
+  flex-wrap: wrap;
+  padding: 40px 32px;
+  background: var(--surface-soft);
+}
+
+/* Ambient console-glow drifting behind the hero copy and CTA */
+.control-strip::before,
+.control-strip::after {
+  content: "";
+  position: absolute;
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.control-strip::before {
+  top: -260px;
+  left: 8%;
+  background: radial-gradient(circle, rgba(0, 112, 209, 0.22), transparent 70%);
+  animation: glow-drift-a 14s ease-in-out infinite;
+}
+
+.control-strip::after {
+  top: -240px;
+  right: 4%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.18), transparent 70%);
+  animation: glow-drift-b 18s ease-in-out infinite;
+}
+
+@keyframes glow-drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(30px, 40px) scale(1.15); }
+}
+
+@keyframes glow-drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-40px, 30px) scale(1.1); }
+}
+
+.control-strip-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.control-strip-copy h1 {
+  font-size: 35px;
+  color: var(--ink);
+}
+
+.control-strip-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 20px;
   flex-wrap: wrap;
 }
 
-.meta-window-control {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.control-label {
+.meta-label {
   font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: var(--mute-light);
 }
 
 .range-tabs {
+  position: relative;
   display: flex;
-  border: 1px solid var(--line-strong);
-  background: var(--panel-inset);
-  padding: 3px;
-  gap: 3px;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-filter);
+  border-radius: var(--radius-full);
+}
+
+/* Bubble that slides + grows behind whichever tab is hovered */
+.range-tab-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--canvas-light);
+  border-radius: var(--radius-full);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  z-index: 0;
+  pointer-events: none;
+  transition:
+    transform 260ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    width 260ms cubic-bezier(0.34, 1.4, 0.64, 1),
+    height 260ms cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 
 .range-tab {
-  padding: 7px 16px;
-  font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-  transition: color 120ms ease, background-color 120ms ease;
-}
-
-.range-tab:hover:not(:disabled) {
-  color: var(--text);
-}
-
-.range-tab.active {
-  background: var(--cyan);
-  color: var(--ink);
-}
-
-/* Primary action — chamfered, glowing */
-.refresh-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 26px;
+  position: relative;
+  z-index: 1;
+  padding: 8px 16px;
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink);
-  background: linear-gradient(180deg, #7ceafa, var(--cyan) 55%, var(--cyan-deep));
-  clip-path: polygon(
-    var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)),
-    calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer)
-  );
-  transition: filter 120ms ease, translate 120ms ease;
+  letter-spacing: 0.324px;
+  color: var(--body-light);
+  border-radius: var(--radius-full);
+  transition: color 120ms ease;
 }
 
-.refresh-button:hover:not(:disabled) {
-  filter: brightness(1.08);
-  translate: 0 -1px;
+.range-tab:hover:not(:disabled),
+.range-tab.active {
+  color: var(--ink);
+}
+
+/* Primary action — the one PlayStation Blue pill outside the footer band */
+.refresh-button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 28px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.45px;
+  color: var(--on-blue);
+  background: var(--blue);
+  border-radius: var(--radius-full);
+  transition: background-color 120ms ease, transform 120ms ease;
+  animation: cta-breathe 2.6s ease-in-out infinite;
+}
+
+.refresh-button:hover:not([aria-disabled="true"]) {
+  background: var(--blue-pressed);
+  transform: translateY(-1px);
+}
+
+.refresh-button[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@keyframes cta-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 112, 209, 0.45); }
+  50% { box-shadow: 0 0 0 10px rgba(0, 112, 209, 0); }
 }
 
 .refresh-icon {
@@ -289,13 +341,14 @@ body.is-loading .refresh-icon {
   to { rotate: 360deg; }
 }
 
-/* --- Layout -------------------------------------------------------------- */
+/* --- Chapter 3: white canvas body ----------------------------------------- */
 
 .layout {
   display: grid;
   grid-template-columns: minmax(420px, 5fr) minmax(0, 7fr);
-  gap: 36px;
+  gap: 40px;
   align-items: start;
+  padding: 40px 32px 96px;
 }
 
 /* --- Planner column: deck slots ------------------------------------------ */
@@ -305,7 +358,7 @@ body.is-loading .refresh-icon {
   top: 20px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
 }
 
 .deck-slot-grid {
@@ -319,17 +372,18 @@ body.is-loading .refresh-icon {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 14px 16px;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  padding: 16px 20px;
+  background: var(--surface-card);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: border-color 120ms ease, background-color 120ms ease;
 }
 
 .planner-hint {
   margin: 0;
-  font-size: 13px;
-  color: var(--muted);
+  font-size: 14px;
+  color: var(--mute-light);
 }
 
 /* Global exclusions, shown under the deck slots */
@@ -337,20 +391,18 @@ body.is-loading .refresh-icon {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
   gap: 6px;
-  padding: 12px 16px 14px;
-  background: var(--panel);
-  border: 1px solid rgba(255, 84, 112, 0.3);
+  padding: 14px 20px 16px;
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
 }
 
 .planner-exclude-strip::before {
   content: "Excluded from all decks";
   grid-column: 1 / -1;
   font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--red);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--warning);
 }
 
 .planner-header {
@@ -362,10 +414,8 @@ body.is-loading .refresh-icon {
 }
 
 .planner-heading {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 22px;
+  color: var(--ink);
 }
 
 .planner-actions {
@@ -374,75 +424,48 @@ body.is-loading .refresh-icon {
 }
 
 .planner-action-button {
-  padding: 7px 14px;
+  padding: 8px 16px;
   font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--cyan);
-  border: 1px solid rgba(88, 224, 240, 0.4);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.324px;
+  color: var(--blue);
+  border: 1px solid var(--blue);
+  border-radius: var(--radius-full);
   transition: background-color 120ms ease;
 }
 
 .planner-action-button:hover {
-  background: var(--cyan-glow);
+  background: rgba(0, 112, 209, 0.08);
 }
 
 .planner-action-button.exclude {
-  color: var(--red);
-  border-color: rgba(255, 84, 112, 0.4);
+  color: var(--warning);
+  border-color: var(--warning);
 }
 
 .planner-action-button.exclude:hover {
-  background: var(--red-glow);
+  background: var(--warning-tint);
 }
 
 .deck-slot:hover {
-  border-color: var(--line-strong);
-  background: var(--panel-raised);
+  background: var(--surface-soft);
 }
 
 .deck-slot-header {
   font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--mute-light);
 }
 
 .deck-slot.active {
-  border-color: rgba(88, 224, 240, 0.55);
-  background: linear-gradient(180deg, rgba(88, 224, 240, 0.07), rgba(88, 224, 240, 0.02));
+  border-color: var(--blue);
+  background: var(--canvas-light);
 }
 
 .deck-slot.active .deck-slot-header {
-  color: var(--cyan);
-}
-
-/* Corner brackets mark the deck being edited */
-.deck-slot.active::before,
-.deck-slot.active::after {
-  content: "";
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  pointer-events: none;
-}
-
-.deck-slot.active::before {
-  top: -2px;
-  left: -2px;
-  border-top: 2px solid var(--cyan);
-  border-left: 2px solid var(--cyan);
-}
-
-.deck-slot.active::after {
-  bottom: -2px;
-  right: -2px;
-  border-bottom: 2px solid var(--cyan);
-  border-right: 2px solid var(--cyan);
+  color: var(--blue);
 }
 
 .deck-slot-cards {
@@ -453,16 +476,18 @@ body.is-loading .refresh-icon {
 
 .empty-card-slot {
   aspect-ratio: 5 / 6;
-  background: var(--panel-inset);
-  border: 1px dashed var(--line);
+  background: var(--canvas-light);
+  border: 1px dashed var(--ash-light);
+  border-radius: var(--radius-sm);
 }
 
 /* A picked card chip (used in deck slots and the exclude strip) */
 .selected-card-tile {
   position: relative;
   overflow: hidden;
-  border: 1px solid var(--line-strong);
-  background: var(--panel-inset);
+  border: 1px solid var(--hairline-light);
+  border-radius: var(--radius-sm);
+  background: var(--canvas-light);
 }
 
 .selected-card-tile img {
@@ -481,7 +506,7 @@ body.is-loading .refresh-icon {
   font-size: 15px;
   font-weight: 600;
   color: #fff;
-  background: rgba(12, 10, 19, 0.72);
+  background: rgba(0, 0, 0, 0.6);
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -492,11 +517,11 @@ body.is-loading .refresh-icon {
 }
 
 .selected-card-tile.include {
-  border-color: rgba(88, 224, 240, 0.5);
+  border-color: var(--blue);
 }
 
 .selected-card-tile.exclude {
-  border-color: rgba(255, 84, 112, 0.55);
+  border-color: var(--warning);
 }
 
 /* --- Card filter editor (pop-out modal) ----------------------------------- */
@@ -508,7 +533,7 @@ body.is-loading .refresh-icon {
   display: grid;
   place-items: center;
   padding: 28px;
-  background: rgba(7, 5, 12, 0.86);
+  background: rgba(0, 0, 0, 0.5);
 }
 
 body.modal-open {
@@ -518,41 +543,13 @@ body.modal-open {
 .card-filter-editor {
   width: min(780px, 100%);
   max-height: min(86vh, 900px);
-  background: var(--panel-raised);
-  border: 1px solid var(--line-strong);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
-  padding: 20px;
+  background: var(--canvas-light);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-}
-
-/* Corner brackets echo the active deck slot */
-.card-filter-editor {
-  position: relative;
-}
-
-.card-filter-editor::before,
-.card-filter-editor::after {
-  content: "";
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  pointer-events: none;
-}
-
-.card-filter-editor::before {
-  top: -2px;
-  left: -2px;
-  border-top: 2px solid var(--cyan);
-  border-left: 2px solid var(--cyan);
-}
-
-.card-filter-editor::after {
-  bottom: -2px;
-  right: -2px;
-  border-bottom: 2px solid var(--cyan);
-  border-right: 2px solid var(--cyan);
+  gap: 16px;
 }
 
 .filter-editor-heading {
@@ -565,7 +562,7 @@ body.modal-open {
 .filter-heading-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 16px;
 }
 
 .modal-close-button {
@@ -575,14 +572,14 @@ body.modal-open {
   place-items: center;
   font-size: 20px;
   line-height: 1;
-  color: var(--muted);
-  border: 1px solid var(--line-strong);
-  transition: color 120ms ease, border-color 120ms ease;
+  color: var(--mute-light);
+  border-radius: var(--radius-full);
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
 .modal-close-button:hover {
-  color: var(--text);
-  border-color: var(--cyan);
+  color: var(--ink);
+  background: var(--surface-soft);
 }
 
 .filter-modal-footer {
@@ -592,80 +589,71 @@ body.modal-open {
 }
 
 .confirm-filters-button {
-  padding: 10px 30px;
+  height: 48px;
+  padding: 0 28px;
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink);
-  background: linear-gradient(180deg, #7ceafa, var(--cyan) 55%, var(--cyan-deep));
-  clip-path: polygon(
-    var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)),
-    calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer)
-  );
-  transition: filter 120ms ease;
+  letter-spacing: 0.45px;
+  color: var(--on-blue);
+  background: var(--blue);
+  border-radius: var(--radius-full);
+  transition: background-color 120ms ease;
 }
 
 .confirm-filters-button:hover {
-  filter: brightness(1.08);
+  background: var(--blue-pressed);
 }
 
 .filter-editor-heading h3 {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 22px;
+  color: var(--ink);
 }
 
 .clear-deck-button {
   font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--red);
-  padding: 5px 10px;
-  border: 1px solid rgba(255, 84, 112, 0.4);
-  transition: background-color 120ms ease;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--warning);
+  transition: opacity 120ms ease;
 }
 
 .clear-deck-button:hover {
-  background: var(--red-glow);
+  opacity: 0.7;
 }
 
 .picker-mode-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  border: 1px solid var(--line-strong);
-  background: var(--panel-inset);
-  padding: 3px;
-  gap: 3px;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-filter);
+  border-radius: var(--radius-full);
 }
 
 .picker-mode-tab {
   padding: 8px 0;
   font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  transition: color 120ms ease, background-color 120ms ease;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.324px;
+  color: var(--body-light);
+  border-radius: var(--radius-full);
+  transition: background-color 120ms ease, color 120ms ease;
 }
 
 .picker-mode-tab:hover {
-  color: var(--text);
-}
-
-.picker-mode-tab.active {
-  background: var(--cyan);
   color: var(--ink);
 }
 
-/* Exclude mode paints the switch red so the mode is unmistakable */
+.picker-mode-tab.active {
+  background: var(--blue);
+  color: var(--on-blue);
+}
+
+/* Exclude mode paints the switch warning-red so the mode is unmistakable */
 .picker-mode-tab.active[data-mode="exclude"] {
-  background: var(--red);
+  background: var(--warning);
   color: #fff;
 }
 
@@ -682,19 +670,20 @@ body.modal-open {
   overflow-y: auto;
   padding: 2px;
   scrollbar-width: thin;
-  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-color: var(--ash-light) transparent;
 }
 
 .picker-card {
   position: relative;
   overflow: hidden;
   border: 1px solid transparent;
-  background: var(--panel-inset);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
   transition: border-color 100ms ease;
 }
 
 .picker-card:hover {
-  border-color: var(--line-strong);
+  border-color: var(--ash-light);
 }
 
 /* The tile stretches to its fixed 72x87 track; the art just fills it.
@@ -707,14 +696,14 @@ body.modal-open {
 }
 
 .picker-card.included {
-  border-color: var(--cyan);
-  outline: 1px solid var(--cyan);
+  border-color: var(--blue);
+  outline: 1px solid var(--blue);
   outline-offset: -1px;
 }
 
 .picker-card.excluded {
-  border-color: var(--red);
-  outline: 1px solid var(--red);
+  border-color: var(--warning);
+  outline: 1px solid var(--warning);
   outline-offset: -1px;
 }
 
@@ -735,12 +724,13 @@ body.modal-open {
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
-  color: var(--ink);
-  background: var(--cyan);
+  color: var(--on-blue);
+  background: var(--blue);
+  border-radius: var(--radius-full);
 }
 
 .picker-card.excluded .picker-card-state {
-  background: var(--red);
+  background: var(--warning);
   color: #fff;
 }
 
@@ -748,8 +738,8 @@ body.modal-open {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
   gap: 6px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline-light);
 }
 
 /* Exclusions apply to every deck, so the strip says so */
@@ -757,11 +747,9 @@ body.modal-open {
   content: "Excluded from all decks";
   grid-column: 1 / -1;
   font-family: var(--font-display);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--red);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--warning);
 }
 
 /* --- Results column ------------------------------------------------------ */
@@ -782,20 +770,16 @@ body.modal-open {
 }
 
 #results-heading {
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 22px;
+  color: var(--ink);
 }
 
 .results-meta p {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--amber);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--mute-light);
 }
 
 /* Stale results: filters changed since the last search */
@@ -803,15 +787,13 @@ body.modal-open {
   display: none;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid rgba(255, 182, 72, 0.45);
-  background: rgba(255, 182, 72, 0.08);
-  color: var(--amber);
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--warning-tint);
+  color: var(--warning);
   font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 body.results-stale .stale-notice {
@@ -822,7 +804,8 @@ body.results-stale .stale-notice {
   width: 8px;
   height: 8px;
   flex-shrink: 0;
-  background: var(--amber);
+  border-radius: var(--radius-full);
+  background: var(--warning);
   animation: stale-pulse 1.6s ease-in-out infinite;
 }
 
@@ -847,25 +830,24 @@ body.results-stale .results-meta p {
 .results-list:empty {
   padding: 64px 24px;
   text-align: center;
-  border: 1px dashed var(--line-strong);
-  background: var(--panel);
+  background: var(--surface-soft);
+  border-radius: var(--radius-md);
 }
 
 .results-list:empty::before {
   content: "Standing by";
   display: block;
   font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink);
   margin-bottom: 6px;
 }
 
 .results-list:empty::after {
   content: "Pick a meta window, lock in any card constraints, then hit Find decks.";
   display: block;
-  color: var(--muted);
+  color: var(--mute-light);
 }
 
 /* Hide the idle placeholder when the real empty/error state is visible */
@@ -875,13 +857,13 @@ body.results-stale .results-meta p {
 
 /* One war-deck bundle (collapsible) */
 .war-card {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  transition: border-color 120ms ease;
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  transition: box-shadow 120ms ease;
 }
 
 .war-card[open] {
-  border-color: var(--line-strong);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
 }
 
 .war-card-summary {
@@ -889,7 +871,7 @@ body.results-stale .results-meta p {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px;
+  padding: 16px 20px;
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -900,7 +882,8 @@ body.results-stale .results-meta p {
 }
 
 .war-card-summary:hover {
-  background: var(--panel-raised);
+  background: var(--surface-soft);
+  border-radius: var(--radius-md);
 }
 
 .bundle-identity {
@@ -916,15 +899,18 @@ body.results-stale .results-meta p {
   font-size: 20px;
   font-weight: 700;
   line-height: 1;
-  color: var(--amber);
+  background: linear-gradient(135deg, var(--blue), #7c3aed);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /* The four decks' win conditions, e.g. "Golem · P.E.K.K.A · Hog Rider · Miner" */
 .bundle-wincons {
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+  font-family: var(--font-body);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--ink);
 }
 
 .summary-right {
@@ -934,18 +920,17 @@ body.results-stale .results-meta p {
 .chevron {
   display: inline-block;
   font-size: 18px;
-  color: var(--muted);
+  color: var(--mute-light);
   transition: rotate 160ms ease;
 }
 
 .war-card[open] .chevron {
   rotate: 180deg;
-  color: var(--cyan);
+  color: var(--blue);
 }
 
 .war-card-body {
-  padding: 4px 18px 18px;
-  border-top: 1px solid var(--line);
+  padding: 4px 20px 20px;
 }
 
 .deck-grid {
@@ -956,12 +941,20 @@ body.results-stale .results-meta p {
 }
 
 .deck-panel {
-  background: var(--panel-inset);
-  border: 1px solid var(--line);
-  padding: 14px;
+  --family-color: var(--blue);
+  background: var(--canvas-light);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--family-color);
+  padding: 16px 16px 16px 13px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.deck-panel:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--family-color) 45%, transparent);
 }
 
 .deck-panel-header {
@@ -972,24 +965,24 @@ body.results-stale .results-meta p {
 }
 
 .deck-panel-header h3 {
-  font-size: 13px;
+  font-family: var(--font-body);
+  font-size: 14px;
   font-weight: 600;
-  letter-spacing: 0.04em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--ink);
 }
 
 .rank-badge {
   flex-shrink: 0;
   font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--ink);
-  background: var(--amber);
-  padding: 3px 8px;
-  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--on-blue);
+  background: var(--family-color);
+  border-radius: var(--radius-full);
+  padding: 4px 10px;
 }
 
 .result-card-grid {
@@ -1009,8 +1002,14 @@ body.results-stale .results-meta p {
   height: auto;
   aspect-ratio: 5 / 6;
   object-fit: cover;
-  border: 1px solid var(--line);
-  background: var(--panel);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.result-card-tile:hover .result-card-art {
+  transform: scale(1.06);
+  box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--family-color) 55%, transparent);
 }
 
 .deck-stats-row {
@@ -1021,16 +1020,14 @@ body.results-stale .results-meta p {
 }
 
 .deck-stat {
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--cyan);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--mute-light);
 }
 
 .deck-stat.winrate {
-  color: var(--amber);
+  color: var(--blue);
 }
 
 /* --- Load more / empty / loading states ----------------------------------- */
@@ -1050,22 +1047,21 @@ body.results-stale .results-meta p {
   display: grid;
   place-items: center;
   font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  border: 1px solid var(--line-strong);
-  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--mute-light);
+  border-radius: var(--radius-full);
+  transition: color 120ms ease, background-color 120ms ease;
 }
 
 .page-button:hover:not(:disabled):not(.active) {
-  color: var(--text);
-  border-color: var(--cyan);
+  background: var(--surface-soft);
+  color: var(--ink);
 }
 
 .page-button.active {
-  background: var(--cyan);
-  border-color: var(--cyan);
-  color: var(--ink);
+  background: var(--blue);
+  color: var(--on-blue);
 }
 
 .page-button:disabled {
@@ -1073,7 +1069,7 @@ body.results-stale .results-meta p {
 }
 
 .page-gap {
-  color: var(--muted);
+  color: var(--mute-light);
   padding: 0 2px;
   font-family: var(--font-display);
 }
@@ -1085,8 +1081,8 @@ body.results-stale .results-meta p {
   gap: 6px;
   text-align: center;
   padding: 56px 20px;
-  background: var(--panel);
-  border: 1px dashed var(--line-strong);
+  background: var(--surface-soft);
+  border-radius: var(--radius-md);
 }
 
 .empty-shield {
@@ -1098,34 +1094,27 @@ body.results-stale .results-meta p {
   font-family: var(--font-display);
   font-size: 22px;
   line-height: 1;
-  color: var(--muted);
+  color: var(--mute-light);
   margin-bottom: 14px;
-}
-
-.empty-shield::before {
-  content: "";
-  position: absolute;
-  inset: 7px;
-  border: 2px solid var(--line-strong);
-  rotate: 45deg;
+  border: 2px solid var(--ash-light);
+  border-radius: var(--radius-full);
 }
 
 .empty-state h3 {
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--ink);
 }
 
 .empty-state p {
   margin: 0;
-  color: var(--muted);
+  color: var(--mute-light);
   max-width: 46ch;
 }
 
 /* Loading skeletons */
 .skeleton-card {
-  padding: 18px;
+  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1133,11 +1122,12 @@ body.results-stale .results-meta p {
 
 .skeleton-line,
 .skeleton-grid {
+  border-radius: var(--radius-sm);
   background: linear-gradient(
     100deg,
-    var(--panel-raised) 40%,
-    rgba(150, 155, 205, 0.14) 50%,
-    var(--panel-raised) 60%
+    var(--surface-soft) 40%,
+    #e4e4e4 50%,
+    var(--surface-soft) 60%
   );
   background-size: 200% 100%;
   animation: shimmer 1.4s ease-in-out infinite;
@@ -1164,19 +1154,20 @@ body.results-stale .results-meta p {
   to { background-position: -200% 0; }
 }
 
-/* --- Footer ---------------------------------------------------------------- */
+/* --- Chapter 4: PlayStation Blue footer band ------------------------------ */
 
-footer {
-  margin-top: 40px;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+.site-footer {
+  padding: 48px 32px;
+  background: var(--blue);
 }
 
-footer p {
+.site-footer p {
   margin: 0;
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+  max-width: 1440px;
+  margin-inline: auto;
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--on-blue);
 }
 
 /* --- Responsive ------------------------------------------------------------ */
@@ -1197,7 +1188,7 @@ footer p {
   }
 
   .card-filter-editor {
-    padding: 14px;
+    padding: 16px;
     max-height: 92vh;
   }
 
@@ -1209,17 +1200,17 @@ footer p {
 }
 
 @media (max-width: 720px) {
-  .app-shell {
-    padding: 0 16px 32px;
+  .site-header,
+  .control-strip {
+    padding-left: 16px;
+    padding-right: 16px;
   }
 
-  .site-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 14px;
+  .layout {
+    padding: 32px 16px 64px;
   }
 
-  .header-controls {
+  .control-strip-actions {
     width: 100%;
     justify-content: space-between;
   }
@@ -1227,6 +1218,41 @@ footer p {
   .deck-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* --- Easter egg popup ------------------------------------------------------ */
+
+.fun-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, 80vw);
+  aspect-ratio: 1442 / 1282;
+  z-index: 100;
+  cursor: pointer;
+  animation: fun-popup-in 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.fun-popup video {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.fun-popup canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  filter: drop-shadow(0 18px 30px rgba(0, 0, 0, 0.4));
+}
+
+@keyframes fun-popup-in {
+  from { transform: translate(-50%, -50%) scale(0.35); opacity: 0; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
 }
 
 /* --- Reduced motion ---------------------------------------------------------- */

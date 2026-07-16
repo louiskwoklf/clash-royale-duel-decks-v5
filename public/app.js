@@ -19,8 +19,12 @@ const elements = {
   emptyTitle: document.querySelector("#empty-title"),
   excludeStrip: document.querySelector("#exclude-card-strip"),
   filterDeckName: document.querySelector("#filter-deck-name"),
+  funPopup: document.querySelector("#fun-popup"),
+  funPopupVideo: document.querySelector("#fun-popup-video"),
+  funPopupCanvas: document.querySelector("#fun-popup-canvas"),
   pickerModeTabs: [...document.querySelectorAll(".picker-mode-tab")],
   rangeTabs: [...document.querySelectorAll(".range-tab")],
+  rangeTabIndicator: document.querySelector(".range-tab-indicator"),
   refreshButton: document.querySelector("#refresh-button"),
   resultsList: document.querySelector("#results-list"),
   resultsSummary: document.querySelector("#results-summary"),
@@ -107,6 +111,7 @@ function setActiveDeckFilter(index) {
 
 function openFilterModal(index) {
   setActiveDeckFilter(index);
+  setPickerMode("include");
   elements.filterModal.classList.remove("hidden");
   document.body.classList.add("modal-open");
   elements.filterCloseButton.focus();
@@ -305,7 +310,10 @@ function renderDeckFilterPanel() {
 function setLoading(loading) {
   state.loading = loading;
   document.body.classList.toggle("is-loading", loading);
-  elements.refreshButton.disabled = loading;
+  // Not a native `disabled`: a disabled button stops receiving ALL mouse
+  // events (even mousedown), which would swallow the second click of the
+  // double-click easter egg. loadWarDecks() already de-dupes via AbortController.
+  elements.refreshButton.setAttribute("aria-disabled", String(loading));
   elements.rangeTabs.forEach((tab) => {
     tab.disabled = loading;
   });
@@ -399,6 +407,47 @@ function deckIdentity(deck) {
   return deckArchetype(baseKeys);
 }
 
+// Groups archetypes into families so bundles are color-scannable at a
+// glance, the way players already think of decks ("bait", "beatdown"...).
+const FAMILY_COLORS = {
+  bait: "#b45309",
+  hog: "#0070d1",
+  golem: "#7c3aed",
+  air: "#0284c7",
+  bridge: "#be123c",
+  beatdown: "#4338ca",
+  control: "#a21caf",
+  cycle: "#0f766e",
+};
+
+function archetypeFamily(name) {
+  const label = name.toLowerCase();
+  if (label.includes("bait")) return "bait";
+  if (label.includes("hog")) return "hog";
+  if (label.includes("golem") || label.includes("sparky") || label.includes("goblin giant")) {
+    return "golem";
+  }
+  if (label.includes("lava") || label.includes("balloon")) return "air";
+  if (label.includes("pekka") || label.includes("mega knight") || label.includes("bridge spam")) {
+    return "bridge";
+  }
+  if (label.includes("giant") || label.includes("electro")) return "beatdown";
+  if (
+    label.includes("graveyard") ||
+    label.includes("miner") ||
+    label.includes("drill") ||
+    label.includes("wall breakers") ||
+    label.includes("skelly")
+  ) {
+    return "control";
+  }
+  return "cycle";
+}
+
+function deckFamilyColor(deck) {
+  return FAMILY_COLORS[archetypeFamily(deckIdentity(deck))];
+}
+
 function bundleWinConditions(warDeck) {
   return warDeck.candidateIndexes
     .map((candidateIndex) => deckIdentity(candidateForIndex(candidateIndex)))
@@ -436,6 +485,7 @@ function orderDeckCards(cardKeys) {
 
 function createDeckPanel(deck, rank) {
   const panel = makeElement("section", "deck-panel");
+  panel.style.setProperty("--family-color", deckFamilyColor(deck));
   const header = makeElement("div", "deck-panel-header");
   header.append(
     makeElement("span", "rank-badge", `#${rank}`),
@@ -670,9 +720,27 @@ async function initialize() {
   }
 }
 
+// The bubble indicator slides + grows to whichever tab is hovered, and
+// settles back on the active tab once the pointer leaves the group.
+function moveRangeIndicator(tab, { bubble = false } = {}) {
+  if (!tab) return;
+  const expand = bubble ? 4 : 0;
+  elements.rangeTabIndicator.style.width = `${tab.offsetWidth + expand * 2}px`;
+  elements.rangeTabIndicator.style.height = `${tab.offsetHeight + expand * 2}px`;
+  elements.rangeTabIndicator.style.transform =
+    `translate(${tab.offsetLeft - expand}px, ${tab.offsetTop - expand}px)`;
+}
+
+function activeRangeTab() {
+  return elements.rangeTabs.find((tab) => tab.classList.contains("active"));
+}
+
 elements.rangeTabs.forEach((tab) => {
+  tab.addEventListener("mouseenter", () => moveRangeIndicator(tab, { bubble: true }));
+
   tab.addEventListener("click", () => {
     const days = Number.parseInt(tab.dataset.days, 10);
+    moveRangeIndicator(tab, { bubble: true });
     if (days === state.days || state.loading) return;
     state.days = days;
     elements.rangeTabs.forEach((candidate) => {
@@ -684,7 +752,72 @@ elements.rangeTabs.forEach((tab) => {
   });
 });
 
-elements.refreshButton.addEventListener("click", () => loadWarDecks());
+elements.rangeTabIndicator.parentElement.addEventListener("mouseleave", () => {
+  moveRangeIndicator(activeRangeTab());
+});
+
+moveRangeIndicator(activeRangeTab());
+
+// Easter egg: double-clicking the CTA pops out a little autoplaying clip.
+// Tracked manually (rather than relying on the native "dblclick" event)
+// since OS/trackpad double-click timing varies and can miss the native event.
+const DOUBLE_CLICK_WINDOW_MS = 450;
+let lastRefreshClickAt = 0;
+
+const funPopupCtx = elements.funPopupCanvas.getContext("2d", { willReadFrequently: true });
+elements.funPopupCanvas.width = 480;
+elements.funPopupCanvas.height = Math.round((480 * elements.funPopupVideo.videoHeight) / elements.funPopupVideo.videoWidth) || 427;
+
+// Removes the clip's flat blue backdrop frame-by-frame: blue pixels have a
+// much higher blue channel than red/green, everything in the character
+// (skin, gold, white, outlines) does not. Ramped between LOW/HIGH for a
+// soft antialiased edge instead of a jagged cutout.
+const CHROMA_LOW = 15;
+const CHROMA_HIGH = 45;
+
+function renderChromaFrame() {
+  const video = elements.funPopupVideo;
+  if (video.paused || video.ended) return;
+
+  funPopupCtx.drawImage(video, 0, 0, elements.funPopupCanvas.width, elements.funPopupCanvas.height);
+  const frame = funPopupCtx.getImageData(0, 0, elements.funPopupCanvas.width, elements.funPopupCanvas.height);
+  const data = frame.data;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const blueness = Math.min(data[i + 2] - data[i], data[i + 2] - data[i + 1]);
+    if (blueness >= CHROMA_HIGH) {
+      data[i + 3] = 0;
+    } else if (blueness > CHROMA_LOW) {
+      data[i + 3] = Math.round(255 * (1 - (blueness - CHROMA_LOW) / (CHROMA_HIGH - CHROMA_LOW)));
+    }
+  }
+
+  funPopupCtx.putImageData(frame, 0, 0);
+  requestAnimationFrame(renderChromaFrame);
+}
+
+elements.refreshButton.addEventListener("click", () => {
+  const now = Date.now();
+  if (now - lastRefreshClickAt < DOUBLE_CLICK_WINDOW_MS) {
+    lastRefreshClickAt = 0;
+    elements.funPopup.classList.remove("hidden");
+    elements.funPopupVideo.currentTime = 0;
+    elements.funPopupVideo.muted = false;
+    elements.funPopupVideo.play().then(() => requestAnimationFrame(renderChromaFrame)).catch(() => {});
+  } else {
+    lastRefreshClickAt = now;
+  }
+  loadWarDecks();
+});
+
+elements.funPopupVideo.addEventListener("ended", () => {
+  elements.funPopup.classList.add("hidden");
+});
+
+elements.funPopup.addEventListener("click", () => {
+  elements.funPopupVideo.pause();
+  elements.funPopup.classList.add("hidden");
+});
 
 elements.pickerModeTabs.forEach((tab) => {
   tab.addEventListener("click", () => {
