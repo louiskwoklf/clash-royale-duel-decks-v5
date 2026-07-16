@@ -772,8 +772,8 @@ elements.funPopupCanvas.height = Math.round((480 * elements.funPopupVideo.videoH
 // much higher blue channel than red/green, everything in the character
 // (skin, gold, white, outlines) does not. Ramped between LOW/HIGH for a
 // soft antialiased edge instead of a jagged cutout.
-const CHROMA_LOW = 15;
-const CHROMA_HIGH = 45;
+const CHROMA_LOW = 12;
+const CHROMA_HIGH = 28;
 
 function renderChromaFrame() {
   const video = elements.funPopupVideo;
