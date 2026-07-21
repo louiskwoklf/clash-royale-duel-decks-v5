@@ -11,8 +11,8 @@ const elements = {
   filterCloseButton: document.querySelector("#filter-close-button"),
   filterDoneButton: document.querySelector("#filter-done-button"),
   pagination: document.querySelector("#pagination"),
-  plannerIncludeButton: document.querySelector("#planner-include-button"),
   plannerExcludeButton: document.querySelector("#planner-exclude-button"),
+  plannerClearAllButton: document.querySelector("#planner-clear-all-button"),
   plannerExcludeStrip: document.querySelector("#planner-exclude-strip"),
   emptyMessage: document.querySelector("#empty-message"),
   emptyState: document.querySelector("#empty-state"),
@@ -23,6 +23,8 @@ const elements = {
   funPopupVideo: document.querySelector("#fun-popup-video"),
   funPopupCanvas: document.querySelector("#fun-popup-canvas"),
   pickerModeTabs: [...document.querySelectorAll(".picker-mode-tab")],
+  pickerModeTabsGroup: document.querySelector(".picker-mode-tabs"),
+  pickerScopeNote: document.querySelector("#picker-scope-note"),
   rangeTabs: [...document.querySelectorAll(".range-tab")],
   rangeTabIndicator: document.querySelector(".range-tab-indicator"),
   refreshButton: document.querySelector("#refresh-button"),
@@ -37,10 +39,13 @@ const state = {
   controller: null,
   data: null,
   days: 1,
-  deckFilters: Array.from({ length: 4 }, () => ({ include: [] })),
+  deckFilters: Array.from({ length: 4 }, () => ({ include: [], exclude: [] })),
   globalExclude: [],
   loading: false,
   pickerMode: "include",
+  // "deck": Exclude toggles apply only to the active deck. "global": Exclude
+  // toggles apply to all four decks. Include is always deck-scoped.
+  pickerScope: "deck",
   page: 0,
 };
 
@@ -111,6 +116,7 @@ function setActiveDeckFilter(index) {
 
 function openFilterModal(index) {
   setActiveDeckFilter(index);
+  state.pickerScope = "deck";
   setPickerMode("include");
   elements.filterModal.classList.remove("hidden");
   document.body.classList.add("modal-open");
@@ -129,25 +135,67 @@ function setPickerMode(mode) {
     tab.classList.toggle("active", active);
     tab.setAttribute("aria-pressed", String(active));
   });
+  // The global-exclude flow only ever excludes -- there's nothing to
+  // include, so the Include tab would just be a dead end.
+  elements.pickerModeTabsGroup.classList.toggle("hidden", state.pickerScope === "global");
+  updateFilterDeckName();
+  updatePickerScopeNote();
   updatePickerSelectionState();
+  renderExcludeStrip();
+}
+
+// "Deck 1-4" when excluding globally -- state.activeDeckFilter is whichever
+// deck happened to be selected last, which has nothing to do with a global
+// action and would otherwise mislabel it as deck-specific.
+function updateFilterDeckName() {
+  elements.filterDeckName.textContent =
+    state.pickerScope === "global" ? "Deck 1-4" : `Deck ${state.activeDeckFilter + 1}`;
+}
+
+// Spells out, in plain words, exactly what clicking a card will do right now
+// -- beginners otherwise have no way to tell "Exclude" apart from "Exclude
+// from every deck" since they share the same tab.
+function updatePickerScopeNote() {
+  const deckLabel = `Deck ${state.activeDeckFilter + 1}`;
+  const isGlobal = state.pickerScope === "global";
+  elements.pickerScopeNote.classList.toggle("global", state.pickerMode === "exclude" && isGlobal);
+
+  if (state.pickerMode === "include") {
+    elements.pickerScopeNote.textContent = `Adding cards to ${deckLabel}.`;
+  } else if (isGlobal) {
+    elements.pickerScopeNote.textContent = "Removing cards from all 4 decks.";
+  } else {
+    elements.pickerScopeNote.textContent = `Removing cards from ${deckLabel} only.`;
+  }
 }
 
 function changeDeckFilter(deckIndex, mode, cardKey, action) {
-  if (mode === "exclude") {
-    // Exclusions are global: they apply to all four decks.
+  const filter = state.deckFilters[deckIndex];
+
+  if (mode === "exclude-global") {
+    // Applies to all four decks.
     if (action === "add") {
       if (!state.globalExclude.includes(cardKey)) {
         state.globalExclude = [...state.globalExclude, cardKey];
       }
-      state.deckFilters.forEach((filter) => {
-        filter.include = filter.include.filter((key) => key !== cardKey);
+      state.deckFilters.forEach((deckFilter) => {
+        deckFilter.include = deckFilter.include.filter((key) => key !== cardKey);
+        deckFilter.exclude = deckFilter.exclude.filter((key) => key !== cardKey);
       });
     } else {
       state.globalExclude = state.globalExclude.filter((key) => key !== cardKey);
     }
+  } else if (mode === "exclude-local") {
+    // Applies only to this one deck.
+    if (action === "add") {
+      if (!filter.exclude.includes(cardKey)) {
+        filter.exclude = [...filter.exclude, cardKey];
+      }
+      filter.include = filter.include.filter((key) => key !== cardKey);
+    } else {
+      filter.exclude = filter.exclude.filter((key) => key !== cardKey);
+    }
   } else {
-    const filter = state.deckFilters[deckIndex];
-
     if (action === "add") {
       if (filter.include.length >= DECK_SLOT_SIZE) {
         return;
@@ -157,6 +205,7 @@ function changeDeckFilter(deckIndex, mode, cardKey, action) {
         filter.include = [...filter.include, cardKey];
       }
       state.globalExclude = state.globalExclude.filter((key) => key !== cardKey);
+      filter.exclude = filter.exclude.filter((key) => key !== cardKey);
     } else {
       filter.include = filter.include.filter((key) => key !== cardKey);
     }
@@ -167,15 +216,39 @@ function changeDeckFilter(deckIndex, mode, cardKey, action) {
 }
 
 function togglePickerCard(cardKey) {
-  const selected =
-    state.pickerMode === "exclude"
-      ? state.globalExclude.includes(cardKey)
-      : activeDeckFilter().include.includes(cardKey);
-  changeDeckFilter(state.activeDeckFilter, state.pickerMode, cardKey, selected ? "remove" : "add");
+  if (state.pickerMode === "include") {
+    const selected = activeDeckFilter().include.includes(cardKey);
+    changeDeckFilter(state.activeDeckFilter, "include", cardKey, selected ? "remove" : "add");
+    return;
+  }
+
+  const isGlobal = state.pickerScope === "global";
+  const selected = isGlobal
+    ? state.globalExclude.includes(cardKey)
+    : activeDeckFilter().exclude.includes(cardKey);
+  changeDeckFilter(
+    state.activeDeckFilter,
+    isGlobal ? "exclude-global" : "exclude-local",
+    cardKey,
+    selected ? "remove" : "add",
+  );
 }
 
 function clearActiveDeckFilter() {
-  state.deckFilters[state.activeDeckFilter] = { include: [] };
+  // Inside the global-exclude flow, "the deck" isn't any one deck -- clear
+  // the global list instead of a specific (and irrelevant) deck's filter.
+  if (state.pickerScope === "global") {
+    state.globalExclude = [];
+  } else {
+    state.deckFilters[state.activeDeckFilter] = { include: [], exclude: [] };
+  }
+  renderDeckFilterPanel();
+  markResultsStale();
+}
+
+function clearAllFilters() {
+  state.deckFilters = Array.from({ length: 4 }, () => ({ include: [], exclude: [] }));
+  state.globalExclude = [];
   renderDeckFilterPanel();
   markResultsStale();
 }
@@ -236,6 +309,15 @@ function createDeckSlot(deckIndex) {
   }
 
   button.append(header, slotCards);
+
+  if (filter.exclude.length > 0) {
+    const excludeRow = makeElement("div", "deck-slot-exclude-row");
+    filter.exclude.forEach((cardKey) => {
+      excludeRow.append(createSelectedCardTile(deckIndex, "exclude-local", cardKey));
+    });
+    button.append(excludeRow);
+  }
+
   return button;
 }
 
@@ -246,13 +328,25 @@ function renderDeckSlots() {
 }
 
 function renderExcludeStrip() {
-  const excluded = state.globalExclude;
-  const makeTiles = () =>
-    excluded.map((cardKey) => createSelectedCardTile(state.activeDeckFilter, "exclude", cardKey));
-  elements.excludeStrip.replaceChildren(...makeTiles());
-  elements.excludeStrip.classList.toggle("hidden", excluded.length === 0);
-  elements.plannerExcludeStrip.replaceChildren(...makeTiles());
-  elements.plannerExcludeStrip.classList.toggle("hidden", excluded.length === 0);
+  // The strip inside the modal mirrors whatever scope is currently active:
+  // this deck's own exclusions, or the global list when excluding globally.
+  const isGlobal = state.pickerScope === "global";
+  const modalExcluded = isGlobal ? state.globalExclude : activeDeckFilter().exclude;
+  const modalMode = isGlobal ? "exclude-global" : "exclude-local";
+  elements.excludeStrip.dataset.scope = isGlobal ? "global" : "deck";
+  elements.excludeStrip.replaceChildren(
+    ...modalExcluded.map((cardKey) => createSelectedCardTile(state.activeDeckFilter, modalMode, cardKey)),
+  );
+  elements.excludeStrip.classList.toggle("hidden", modalExcluded.length === 0);
+
+  // The main page always summarises the global list only -- per-deck
+  // exclusions show inside each deck's own slot instead.
+  elements.plannerExcludeStrip.replaceChildren(
+    ...state.globalExclude.map((cardKey) =>
+      createSelectedCardTile(state.activeDeckFilter, "exclude-global", cardKey),
+    ),
+  );
+  elements.plannerExcludeStrip.classList.toggle("hidden", state.globalExclude.length === 0);
 }
 
 function createPickerCard(card) {
@@ -269,16 +363,50 @@ function createPickerCard(card) {
   return button;
 }
 
+// Evolutions ("musketeer-ev1") and hero skins ("musketeer-hero") are the
+// same physical card as their base form -- a deck (or the globally-excluded
+// list) can't hold two variants of the same card any more than it could
+// hold two copies of the plain one.
+function includesSameBaseCard(cardKeys, cardKey) {
+  const base = baseCardKey(cardKey);
+  return cardKeys.some((key) => baseCardKey(key) === base);
+}
+
 function updatePickerCardState(button) {
   const cardKey = button.dataset.cardKey;
   const filter = activeDeckFilter();
+  const isGlobalScope = state.pickerScope === "global";
   const isIncluded = filter.include.includes(cardKey);
-  const isExcluded = state.globalExclude.includes(cardKey);
+  const isExcluded = isGlobalScope ? state.globalExclude.includes(cardKey) : filter.exclude.includes(cardKey);
+  const isGloballyExcluded = state.globalExclude.includes(cardKey);
+  const isIncludedInThisDeck = state.pickerMode === "include" && !isIncluded && includesSameBaseCard(filter.include, cardKey);
+  const isIncludedInAnotherDeck =
+    state.pickerMode === "include" &&
+    !isIncluded &&
+    state.deckFilters.some(
+      (deckFilter, index) => index !== state.activeDeckFilter && includesSameBaseCard(deckFilter.include, cardKey),
+    );
+  // A globally-excluded card (in any form) can't also be included or locally
+  // excluded -- lock it everywhere except the global-exclude view itself,
+  // where toggling it off needs to stay possible. Including a card (or one
+  // of its other forms) already used anywhere else is blocked too: war
+  // decks need 32 unique cards across all four.
+  const isLocked = !isGlobalScope && (isGloballyExcluded || isIncludedInThisDeck || isIncludedInAnotherDeck);
   const stateBadge = button.querySelector(".picker-card-state");
 
   button.classList.toggle("included", isIncluded);
   button.classList.toggle("excluded", isExcluded);
-  button.setAttribute("aria-label", `${state.pickerMode} ${cardNameForKey(cardKey)}`);
+  button.classList.toggle("locked", isLocked);
+  button.disabled = isLocked;
+  const lockReason = isGloballyExcluded
+    ? "excluded from all decks"
+    : isIncludedInThisDeck
+      ? "already in this deck"
+      : "already used in another deck";
+  button.setAttribute(
+    "aria-label",
+    isLocked ? `${cardNameForKey(cardKey)} ${lockReason}` : `${state.pickerMode} ${cardNameForKey(cardKey)}`,
+  );
   button.setAttribute("aria-pressed", String(state.pickerMode === "include" ? isIncluded : isExcluded));
 
   if (stateBadge) {
@@ -300,8 +428,7 @@ function renderCardPicker() {
 }
 
 function renderDeckFilterPanel() {
-  elements.filterDeckName.textContent = `Deck ${state.activeDeckFilter + 1}`;
-  elements.clearDeckButton.hidden = activeDeckFilter().include.length === 0;
+  updateFilterDeckName();
   renderDeckSlots();
   renderExcludeStrip();
   updatePickerSelectionState();
@@ -427,13 +554,15 @@ function archetypeFamily(name) {
   if (label.includes("golem") || label.includes("sparky") || label.includes("goblin giant")) {
     return "golem";
   }
-  if (label.includes("lava") || label.includes("balloon")) return "air";
+  // "loon" also catches "LumberLoon" -- "balloon" alone misses that abbreviation
+  if (label.includes("lava") || label.includes("balloon") || label.includes("loon")) return "air";
   if (label.includes("pekka") || label.includes("mega knight") || label.includes("bridge spam")) {
     return "bridge";
   }
   if (label.includes("giant") || label.includes("electro")) return "beatdown";
   if (
     label.includes("graveyard") ||
+    label.includes("gy freeze") || // "GY" abbreviates "graveyard" -- doesn't match the check above
     label.includes("miner") ||
     label.includes("drill") ||
     label.includes("wall breakers") ||
@@ -650,7 +779,8 @@ function appendDeckFilters(query) {
   state.deckFilters.forEach((filter, index) => {
     const deckNumber = index + 1;
     filter.include.forEach((cardKey) => query.append(`d${deckNumber}inc`, cardKey));
-    state.globalExclude.forEach((cardKey) => query.append(`d${deckNumber}exc`, cardKey));
+    const excluded = new Set([...state.globalExclude, ...filter.exclude]);
+    excluded.forEach((cardKey) => query.append(`d${deckNumber}exc`, cardKey));
   });
 }
 
@@ -821,6 +951,12 @@ elements.funPopup.addEventListener("click", () => {
 
 elements.pickerModeTabs.forEach((tab) => {
   tab.addEventListener("click", () => {
+    // Include is always this-deck-only. Exclude keeps whatever scope is
+    // already active (global if opened via the toolbar's Exclude button,
+    // this-deck-only otherwise) -- clicking the tab itself never changes it.
+    if (tab.dataset.mode === "include") {
+      state.pickerScope = "deck";
+    }
     setPickerMode(tab.dataset.mode);
   });
 });
@@ -843,14 +979,12 @@ document.addEventListener("keydown", (event) => {
 
 elements.filterDoneButton.addEventListener("click", closeFilterModal);
 
-elements.plannerIncludeButton.addEventListener("click", () => {
-  openFilterModal(state.activeDeckFilter);
-  setPickerMode("include");
-});
-
 elements.plannerExcludeButton.addEventListener("click", () => {
   openFilterModal(state.activeDeckFilter);
+  state.pickerScope = "global";
   setPickerMode("exclude");
 });
+
+elements.plannerClearAllButton.addEventListener("click", clearAllFilters);
 
 initialize();

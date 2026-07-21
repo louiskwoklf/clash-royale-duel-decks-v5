@@ -243,7 +243,7 @@ h1, h2, h3 {
 
 .meta-label {
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 17px;
   font-weight: 500;
   letter-spacing: 0.1px;
   color: var(--mute-light);
@@ -253,7 +253,7 @@ h1, h2, h3 {
   position: relative;
   display: flex;
   gap: 4px;
-  padding: 4px;
+  padding: 5px;
   background: var(--surface-filter);
   border-radius: var(--radius-full);
 }
@@ -277,9 +277,9 @@ h1, h2, h3 {
 .range-tab {
   position: relative;
   z-index: 1;
-  padding: 8px 16px;
+  padding: 11px 22px;
   font-family: var(--font-display);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.324px;
   color: var(--body-light);
@@ -386,6 +386,17 @@ body.is-loading .refresh-icon {
   color: var(--mute-light);
 }
 
+.planner-instructions {
+  margin: -6px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mute-light);
+}
+
+.planner-instructions strong {
+  color: var(--ink);
+}
+
 /* Global exclusions, shown under the deck slots */
 .planner-exclude-strip {
   display: grid;
@@ -448,6 +459,15 @@ body.is-loading .refresh-icon {
   background: var(--warning-tint);
 }
 
+.planner-action-button.clear-all {
+  color: var(--mute-light);
+  border-color: var(--ash-light);
+}
+
+.planner-action-button.clear-all:hover {
+  background: var(--surface-soft);
+}
+
 .deck-slot:hover {
   background: var(--surface-soft);
 }
@@ -472,6 +492,22 @@ body.is-loading .refresh-icon {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: 6px;
+}
+
+.deck-slot-exclude-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.deck-slot-exclude-row::before {
+  content: "Excluded from this deck";
+  grid-column: 1 / -1;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--warning);
 }
 
 .empty-card-slot {
@@ -520,7 +556,8 @@ body.is-loading .refresh-icon {
   border-color: var(--blue);
 }
 
-.selected-card-tile.exclude {
+.selected-card-tile.exclude-global,
+.selected-card-tile.exclude-local {
   border-color: var(--warning);
 }
 
@@ -584,7 +621,9 @@ body.modal-open {
 
 .filter-modal-footer {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 12px;
   padding-top: 2px;
 }
 
@@ -611,15 +650,19 @@ body.modal-open {
 }
 
 .clear-deck-button {
+  padding: 8px 16px;
   font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 700;
+  letter-spacing: 0.324px;
   color: var(--warning);
-  transition: opacity 120ms ease;
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-full);
+  transition: background-color 120ms ease;
 }
 
 .clear-deck-button:hover {
-  opacity: 0.7;
+  background: var(--warning-tint);
 }
 
 .picker-mode-tabs {
@@ -655,6 +698,17 @@ body.modal-open {
 .picker-mode-tab.active[data-mode="exclude"] {
   background: var(--warning);
   color: #fff;
+}
+
+.picker-scope-note {
+  margin: 8px 2px 0;
+  font-size: 13px;
+  color: var(--mute-light);
+}
+
+.picker-scope-note.global {
+  color: var(--warning);
+  font-weight: 600;
 }
 
 /* Fixed track sizes on purpose: content-derived (auto / aspect-ratio) tracks
@@ -713,6 +767,19 @@ body.modal-open {
   opacity: 0.35;
 }
 
+/* Excluded from every deck already -- nothing left to toggle here */
+.picker-card.locked {
+  cursor: not-allowed;
+}
+
+.picker-card.locked:hover {
+  border-color: transparent;
+}
+
+.picker-card.locked .picker-card-art {
+  opacity: 0.22;
+}
+
 .picker-card-state {
   position: absolute;
   top: 3px;
@@ -742,7 +809,7 @@ body.modal-open {
   border-top: 1px solid var(--hairline-light);
 }
 
-/* Exclusions apply to every deck, so the strip says so */
+/* Label matches whichever scope is active: all decks (global) or just this one */
 .exclude-card-strip::before {
   content: "Excluded from all decks";
   grid-column: 1 / -1;
@@ -750,6 +817,10 @@ body.modal-open {
   font-size: 12px;
   font-weight: 500;
   color: var(--warning);
+}
+
+.exclude-card-strip[data-scope="deck"]::before {
+  content: "Excluded from this deck";
 }
 
 /* --- Results column ------------------------------------------------------ */

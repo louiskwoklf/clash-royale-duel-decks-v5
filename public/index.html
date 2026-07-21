@@ -78,22 +78,27 @@
           <div class="planner-header">
             <h2 class="planner-heading">Customise your decks</h2>
             <div class="planner-actions">
-              <button class="planner-action-button" id="planner-include-button" type="button">
-                + Include
-              </button>
               <button class="planner-action-button exclude" id="planner-exclude-button" type="button">
                 − Exclude
+              </button>
+              <button class="planner-action-button clear-all" id="planner-clear-all-button" type="button">
+                Clear all
               </button>
             </div>
           </div>
 
-          <div class="deck-slot-grid" id="deck-slot-grid" aria-label="Deck include filters"></div>
+          <p class="planner-instructions">
+            <strong>Exclude</strong> here removes a card from <strong>all 4 decks</strong>.
+            Select and click a deck below to include or exclude for <strong>that one deck only</strong>.
+          </p>
 
           <div
             class="planner-exclude-strip hidden"
             id="planner-exclude-strip"
             aria-label="Cards excluded from all decks"
           ></div>
+
+          <div class="deck-slot-grid" id="deck-slot-grid" aria-label="Deck include filters"></div>
 
           <p class="planner-hint">Select a deck to choose its cards.</p>
         </aside>
@@ -142,9 +147,6 @@
         <div class="filter-editor-heading">
           <h3 id="filter-deck-name">Deck 1</h3>
           <div class="filter-heading-actions">
-            <button class="clear-deck-button" id="clear-deck-button" type="button">
-              Clear deck
-            </button>
             <button
               class="modal-close-button"
               id="filter-close-button"
@@ -174,10 +176,14 @@
               Exclude
             </button>
           </div>
+          <p class="picker-scope-note" id="picker-scope-note"></p>
         </div>
         <div class="card-picker-grid" id="card-picker-grid" aria-label="Card picker"></div>
         <div class="exclude-card-strip" id="exclude-card-strip"></div>
         <div class="filter-modal-footer">
+          <button class="clear-deck-button" id="clear-deck-button" type="button">
+            Clear deck
+          </button>
           <button class="confirm-filters-button" id="filter-done-button" type="button">
             Done
           </button>
