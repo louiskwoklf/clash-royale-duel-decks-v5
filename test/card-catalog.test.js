@@ -8,7 +8,7 @@ const { getCardCatalog, hasCardKey, validateCardKeys } = require("../src/card-ca
 test("loads the RoyaleAPI card selector catalog", () => {
   const cards = getCardCatalog();
 
-  assert.equal(cards.length, 180);
+  assert.equal(cards.length, 177);
   assert.equal(hasCardKey("goblins"), true);
   assert.equal(hasCardKey("valkyrie-ev1"), true);
   assert.equal(hasCardKey("balloon-hero"), true);

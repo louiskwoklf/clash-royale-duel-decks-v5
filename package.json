@@ -4,10 +4,11 @@
   "private": true,
   "description": "Extract popular Clash Royale decks from RoyaleAPI.",
   "scripts": {
+    "build": "node src/build-site.js",
     "extract": "node src/extract-decks.js",
     "find-war-decks": "node src/find-war-decks.js",
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "npm run build && node --test"
   },
   "engines": {
     "node": ">=20"
