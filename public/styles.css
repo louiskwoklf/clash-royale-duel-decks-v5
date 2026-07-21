@@ -6,8 +6,6 @@
    gradients or resting shadows.
    ========================================================================== */
 
-@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Inter:wght@400;500;600;700&display=swap");
-
 /* --- Tokens ------------------------------------------------------------- */
 
 :root {
@@ -42,8 +40,8 @@
   --body-dark: rgba(255, 255, 255, 0.7);
   --on-dark-mute: #cccccc;
 
-  --font-display: "Roboto", Arial, Helvetica, sans-serif;
-  --font-body: "Inter", Helvetica, Arial, sans-serif;
+  --font-display: "Arial Narrow", "Roboto Condensed", Arial, Helvetica, sans-serif;
+  --font-body: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   --radius-sm: 4px;
   --radius-md: 8px;
@@ -230,6 +228,13 @@ h1, h2, h3 {
 .control-strip-copy h1 {
   font-size: 35px;
   color: var(--ink);
+}
+
+.control-strip-copy p {
+  margin: 8px 0 0;
+  color: var(--mute-light);
+  font-size: 15px;
+  letter-spacing: 0.01em;
 }
 
 .control-strip-actions {

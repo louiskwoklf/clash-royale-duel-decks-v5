@@ -32,7 +32,12 @@ async function close(server) {
 
 test("validates API query options", () => {
   const options = parseApiOptions(new URL("http://localhost/api/war-decks?time=3"));
-  assert.deepEqual(options, { days: 3, refresh: false, deckFilters: emptyDeckFilters() });
+  assert.deepEqual(options, {
+    days: 3,
+    refresh: false,
+    deckFilters: emptyDeckFilters(),
+    size: 30,
+  });
   assert.deepEqual(
     parseApiOptions(
       new URL(
@@ -42,6 +47,7 @@ test("validates API query options", () => {
     {
       days: 7,
       refresh: true,
+      size: 30,
       deckFilters: [
         { include: ["goblins"], exclude: [] },
         { include: [], exclude: ["balloon-hero"] },
