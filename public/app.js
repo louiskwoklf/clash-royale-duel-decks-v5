@@ -165,7 +165,7 @@ function updatePickerScopeNote() {
   } else if (isGlobal) {
     elements.pickerScopeNote.textContent = "Removing cards from all 4 decks.";
   } else {
-    elements.pickerScopeNote.textContent = `Removing cards from ${deckLabel} only.`;
+    elements.pickerScopeNote.textContent = `Removing cards from ${deckLabel}.`;
   }
 }
 
@@ -764,7 +764,7 @@ function renderResults() {
   const isEmpty = results.length === 0;
   elements.emptyState.classList.toggle("hidden", !isEmpty);
   if (isEmpty) {
-    elements.emptyTitle.textContent = "No valid duel decks";
+    elements.emptyTitle.textContent = "No valid war decks";
     elements.emptyMessage.textContent = "This meta window has no four-deck combinations with 32 unique cards.";
   }
 
@@ -865,12 +865,24 @@ function activeRangeTab() {
   return elements.rangeTabs.find((tab) => tab.classList.contains("active"));
 }
 
+function confirmRangeClick(tab) {
+  elements.rangeTabs.forEach((candidate) => candidate.classList.remove("is-confirming"));
+  elements.rangeTabIndicator.classList.remove("is-confirming");
+
+  // Restart the confirmation animations even when the active option is
+  // clicked again. Reading the indicator width flushes the removed classes.
+  void elements.rangeTabIndicator.offsetWidth;
+  tab.classList.add("is-confirming");
+  elements.rangeTabIndicator.classList.add("is-confirming");
+}
+
 elements.rangeTabs.forEach((tab) => {
   tab.addEventListener("mouseenter", () => moveRangeIndicator(tab, { bubble: true }));
 
   tab.addEventListener("click", () => {
     const days = Number.parseInt(tab.dataset.days, 10);
     moveRangeIndicator(tab, { bubble: true });
+    confirmRangeClick(tab);
     if (days === state.days || state.loading) return;
     state.days = days;
     elements.rangeTabs.forEach((candidate) => {

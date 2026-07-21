@@ -284,12 +284,65 @@ h1, h2, h3 {
   letter-spacing: 0.324px;
   color: var(--body-light);
   border-radius: var(--radius-full);
-  transition: color 120ms ease;
+  -webkit-tap-highlight-color: transparent;
+  transform-origin: center;
+  transition: color 120ms ease, transform 90ms ease;
 }
 
 .range-tab:hover:not(:disabled),
 .range-tab.active {
   color: var(--ink);
+}
+
+/* Give the segmented control a tactile downstroke, then visibly confirm the
+   choice after the pointer/key is released. The JS class also replays when
+   the already-active range is clicked, so every intentional click registers. */
+.range-tab:active:not(:disabled) {
+  transform: scale(0.93);
+}
+
+.range-tab.is-confirming:not(:active) {
+  animation: range-tab-confirm 360ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.range-tab-indicator.is-confirming {
+  animation: range-indicator-confirm 420ms ease-out;
+}
+
+@keyframes range-tab-confirm {
+  0% { transform: scale(0.93); }
+  55% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+@keyframes range-indicator-confirm {
+  0% {
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.12),
+      0 0 0 0 rgba(0, 112, 209, 0.3);
+  }
+  45% {
+    box-shadow:
+      0 3px 10px rgba(0, 0, 0, 0.14),
+      0 0 0 5px rgba(0, 112, 209, 0.18);
+  }
+  100% {
+    box-shadow:
+      0 2px 8px rgba(0, 0, 0, 0.12),
+      0 0 0 10px rgba(0, 112, 209, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .range-tab,
+  .range-tab-indicator {
+    transition-duration: 0.01ms;
+  }
+
+  .range-tab.is-confirming,
+  .range-tab-indicator.is-confirming {
+    animation: none;
+  }
 }
 
 /* Primary action — the one PlayStation Blue pill outside the footer band */
@@ -906,7 +959,7 @@ body.results-stale .results-meta p {
 }
 
 .results-list:empty::before {
-  content: "Standing by";
+  content: "Ready";
   display: block;
   font-family: var(--font-display);
   font-size: 18px;

@@ -1,4 +1,4 @@
-# Clash Royale Duel Decks
+# Clash Royale War Decks
 
 Local web app and command-line tools for turning current popular Clash Royale decks
 into valid four-deck war bundles with no shared cards.
