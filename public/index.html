@@ -79,6 +79,10 @@
             </button>
           </div>
 
+          <button class="data-button" id="data-button" type="button">
+            Update data
+          </button>
+
           <button class="refresh-button" id="refresh-button" type="button">
             <span class="refresh-icon" aria-hidden="true">↻</span>
             Find decks
@@ -148,6 +152,66 @@
       <footer class="site-footer">
         <p>Data sourced from RoyaleAPI.</p>
       </footer>
+    </div>
+
+    <!-- Safari bookmarklet setup and imported-snapshot status -->
+    <div class="filter-modal hidden" id="data-modal">
+      <div
+        class="card-filter-editor data-editor"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="data-modal-title"
+      >
+        <div class="filter-editor-heading">
+          <div>
+            <p class="data-eyebrow">Safari bookmarklet</p>
+            <h3 id="data-modal-title">Update RoyaleAPI data</h3>
+          </div>
+          <button
+            class="modal-close-button"
+            id="data-close-button"
+            type="button"
+            aria-label="Close data updater"
+          >
+            ×
+          </button>
+        </div>
+
+        <p class="data-intro">
+          Install once, then use Safari to send the rendered decks back here. The site never
+          asks a proxy to scrape RoyaleAPI.
+        </p>
+
+        <ol class="data-steps">
+          <li>In Safari, choose <strong>View → Show Favorites Bar</strong>.</li>
+          <li>Drag the blue button below into the Favorites Bar.</li>
+          <li>Open each RoyaleAPI page, wait for its decks, then click the saved favorite.</li>
+        </ol>
+
+        <div class="bookmarklet-install">
+          <a id="bookmarklet-link" class="bookmarklet-link" href="#">
+            Send decks to Finder
+          </a>
+          <span>Drag this button—do not click it here.</span>
+        </div>
+
+        <p class="data-import-message" id="data-import-message" aria-live="polite"></p>
+
+        <div class="snapshot-list" id="snapshot-list" aria-label="Imported deck data">
+          <div class="snapshot-row" data-snapshot-days="1">
+            <div><strong>1 day</strong><span class="snapshot-state">Checking…</span></div>
+            <a data-source-days="1" target="_blank" rel="noopener">Open in RoyaleAPI</a>
+          </div>
+          <div class="snapshot-row" data-snapshot-days="3">
+            <div><strong>3 days</strong><span class="snapshot-state">Checking…</span></div>
+            <a data-source-days="3" target="_blank" rel="noopener">Open in RoyaleAPI</a>
+          </div>
+          <div class="snapshot-row" data-snapshot-days="7">
+            <div><strong>7 days</strong><span class="snapshot-state">Checking…</span></div>
+            <a data-source-days="7" target="_blank" rel="noopener">Open in RoyaleAPI</a>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Card picker pop-out: opened by selecting a deck slot -->

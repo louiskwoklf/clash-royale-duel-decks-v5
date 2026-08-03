@@ -351,6 +351,24 @@ h1, h2, h3 {
 }
 
 /* Primary action — the one PlayStation Blue pill outside the footer band */
+.data-button {
+  height: 40px;
+  padding: 0 18px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--blue);
+  border: 1px solid rgba(0, 112, 209, 0.35);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.55);
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.data-button:hover {
+  border-color: var(--blue);
+  background: var(--canvas-light);
+}
+
 .refresh-button {
   position: relative;
   z-index: 1;
@@ -705,6 +723,112 @@ body.modal-open {
 .filter-editor-heading h3 {
   font-size: 22px;
   color: var(--ink);
+}
+
+.data-editor {
+  width: min(680px, 100%);
+  overflow-y: auto;
+}
+
+.data-eyebrow {
+  margin: 0 0 2px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--blue);
+}
+
+.data-intro {
+  margin: 0;
+  color: var(--body-light);
+}
+
+.data-steps {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--body-light);
+}
+
+.data-steps li + li {
+  margin-top: 7px;
+}
+
+.bookmarklet-install {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 18px;
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.bookmarklet-install span {
+  font-size: 13px;
+  color: var(--mute-light);
+}
+
+.bookmarklet-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 20px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-decoration: none;
+  color: var(--on-blue);
+  background: var(--blue);
+  border-radius: var(--radius-full);
+}
+
+.bookmarklet-link:hover {
+  background: var(--blue-pressed);
+}
+
+.data-import-message {
+  min-height: 24px;
+  margin: 0;
+  font-weight: 600;
+  color: var(--blue-active);
+}
+
+.data-import-message.error {
+  color: var(--warning);
+}
+
+.snapshot-list {
+  display: grid;
+  gap: 8px;
+}
+
+.snapshot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--hairline-light);
+  border-radius: var(--radius-md);
+}
+
+.snapshot-row > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.snapshot-state {
+  font-size: 13px;
+  color: var(--mute-light);
+}
+
+.snapshot-row > a {
+  flex-shrink: 0;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--blue);
 }
 
 .clear-deck-button {
@@ -1342,6 +1466,16 @@ body.results-stale .results-meta p {
   .control-strip-actions {
     width: 100%;
     justify-content: space-between;
+    gap: 12px;
+  }
+
+  .data-button {
+    order: 3;
+  }
+
+  .snapshot-row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .deck-grid {

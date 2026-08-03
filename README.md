@@ -47,6 +47,12 @@ or card name, and inspect all four decks in each result.
 Results are cached in memory for five minutes. A manual refresh bypasses cached data,
 while simultaneous requests for the same meta window share one extraction job.
 
+The hosted Sites build uses a Safari bookmarklet instead of server-side scraping. Open
+**Update data**, drag **Send decks to Finder** into Safari's Favorites Bar, then visit
+the supplied 1-, 3-, and 7-day RoyaleAPI pages and click the favorite after their deck
+lists load. Each import is validated and stored as a durable snapshot; searches and
+card filters run against that saved data without another RoyaleAPI request.
+
 Run tests with:
 
 ```sh

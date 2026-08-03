@@ -6,6 +6,10 @@ const DECK_SLOT_SIZE = 8;
 const elements = {
   cardPickerGrid: document.querySelector("#card-picker-grid"),
   clearDeckButton: document.querySelector("#clear-deck-button"),
+  dataButton: document.querySelector("#data-button"),
+  dataCloseButton: document.querySelector("#data-close-button"),
+  dataImportMessage: document.querySelector("#data-import-message"),
+  dataModal: document.querySelector("#data-modal"),
   deckSlotGrid: document.querySelector("#deck-slot-grid"),
   filterModal: document.querySelector("#filter-modal"),
   filterCloseButton: document.querySelector("#filter-close-button"),
@@ -30,6 +34,9 @@ const elements = {
   refreshButton: document.querySelector("#refresh-button"),
   resultsList: document.querySelector("#results-list"),
   resultsSummary: document.querySelector("#results-summary"),
+  bookmarkletLink: document.querySelector("#bookmarklet-link"),
+  snapshotRows: [...document.querySelectorAll("[data-snapshot-days]")],
+  sourceLinks: [...document.querySelectorAll("[data-source-days]")],
 };
 
 const state = {
@@ -65,6 +72,91 @@ function humanizeSlug(slug) {
     .split("-")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function buildPopularDecksUrl(days) {
+  const url = new URL("https://royaleapi.com/decks/popular");
+  url.search = new URLSearchParams({
+    time: `${days}d`,
+    sort: "rating",
+    size: "30",
+    players: "PvP",
+    min_ranked_trophies: "0",
+    max_ranked_trophies: "4400",
+    min_elixir: "1",
+    max_elixir: "9",
+    evo: "None",
+    min_cycle_elixir: "4",
+    max_cycle_elixir: "28",
+    mode: "detail",
+    type: "TopRanked",
+    global_exclude: "false",
+  }).toString();
+  return url.toString();
+}
+
+// This function is serialized into the Safari favorite, so it must remain
+// self-contained: it cannot refer to any variables or helpers from this file.
+function collectRoyaleApiDecks(targetOrigin) {
+  try {
+    const pageUrl = new URL(window.location.href);
+    const hostname = pageUrl.hostname.replace(/^www\./u, "");
+    if (hostname !== "royaleapi.com" || pageUrl.pathname !== "/decks/popular") {
+      throw new Error("Open a RoyaleAPI popular-decks page before using this favorite.");
+    }
+
+    const timeRange = pageUrl.searchParams.get("time");
+    if (!["1d", "3d", "7d"].includes(timeRange)) {
+      throw new Error("Open the 1-day, 3-day, or 7-day link from War Deck Finder first.");
+    }
+
+    const decks = [...document.querySelectorAll("#decksContainer .deck_segment")]
+      .map((segment, index) => {
+        const statsAnchor = segment.querySelector('a[href^="/decks/stats/"]');
+        const statsText = segment.textContent ?? "";
+        const winsMatch = statsText.match(/([\d.]+)%\s*[\d.]+%\s*[\d.]+%/u);
+        return {
+          rank: index + 1,
+          name: segment.querySelector("h4")?.textContent?.trim() || `Deck ${index + 1}`,
+          statsUrl: statsAnchor?.href ?? null,
+          winRate: winsMatch ? Number.parseFloat(winsMatch[1]) : null,
+        };
+      })
+      .filter((deck) => deck.statsUrl);
+
+    if (decks.length < 4) {
+      throw new Error("No rendered decks were found. Wait for the deck list to load, then try again.");
+    }
+
+    const json = JSON.stringify({
+      timeRange,
+      sourceUrl: pageUrl.toString(),
+      decks,
+    });
+    const bytes = new TextEncoder().encode(json);
+    let binary = "";
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    const encoded = btoa(binary);
+    window.open(`${targetOrigin}/#import=${encoded}`, "_blank", "noopener");
+  } catch (error) {
+    window.alert(`War Deck Finder: ${error.message}`);
+  }
+}
+
+function createBookmarklet() {
+  return `javascript:(${collectRoyaleApiDecks.toString()})(${JSON.stringify(window.location.origin)})`;
+}
+
+function formatImportedAt(value) {
+  if (!value) return "Not imported";
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "Imported";
+  return `Updated ${new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date)}`;
 }
 
 function cardNameForKey(key) {
@@ -107,6 +199,91 @@ function markResultsStale() {
 
   document.body.classList.add("results-stale");
   render();
+}
+
+function openDataModal(message = "", isError = false) {
+  elements.dataModal.classList.remove("hidden");
+  document.body.classList.add("modal-open");
+  elements.dataImportMessage.textContent = message;
+  elements.dataImportMessage.classList.toggle("error", isError);
+  elements.dataCloseButton.focus();
+  loadSnapshotStatus();
+}
+
+function closeDataModal() {
+  elements.dataModal.classList.add("hidden");
+  if (elements.filterModal.classList.contains("hidden")) {
+    document.body.classList.remove("modal-open");
+  }
+}
+
+function setActiveDays(days) {
+  state.days = days;
+  elements.rangeTabs.forEach((tab) => {
+    const active = Number.parseInt(tab.dataset.days, 10) === days;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-pressed", String(active));
+  });
+  moveRangeIndicator(activeRangeTab());
+}
+
+async function loadSnapshotStatus() {
+  try {
+    const response = await fetch("/api/deck-snapshots");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message ?? "Snapshot status is unavailable.");
+    const byDays = new Map(
+      data.snapshots.map((snapshot) => [Number.parseInt(snapshot.timeRange, 10), snapshot]),
+    );
+    elements.snapshotRows.forEach((row) => {
+      const snapshot = byDays.get(Number.parseInt(row.dataset.snapshotDays, 10));
+      const stateLabel = row.querySelector(".snapshot-state");
+      stateLabel.textContent = snapshot?.available
+        ? `${formatImportedAt(snapshot.importedAt)} · ${snapshot.deckCount} decks`
+        : "Not imported yet";
+    });
+  } catch (error) {
+    elements.snapshotRows.forEach((row) => {
+      row.querySelector(".snapshot-state").textContent = error.message;
+    });
+  }
+}
+
+function decodeImportPayload(encoded) {
+  const binary = atob(encoded);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+async function importDecksFromHash() {
+  if (!window.location.hash.startsWith("#import=")) return;
+
+  const encoded = window.location.hash.slice("#import=".length);
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  openDataModal("Importing decks from Safari…");
+
+  try {
+    const payload = decodeImportPayload(encoded);
+    const response = await fetch("/api/import-decks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.message ?? "The deck import failed.");
+
+    const days = Number.parseInt(data.snapshot.timeRange, 10);
+    setActiveDays(days);
+    elements.dataImportMessage.textContent =
+      `${data.snapshot.deckCount} decks imported for the ${days}-day window.`;
+    elements.dataImportMessage.classList.remove("error");
+    await loadSnapshotStatus();
+    closeDataModal();
+    await loadWarDecks({ refresh: true });
+  } catch (error) {
+    elements.dataImportMessage.textContent = error.message;
+    elements.dataImportMessage.classList.add("error");
+  }
 }
 
 function setActiveDeckFilter(index) {
@@ -759,7 +936,8 @@ function renderResults() {
     ...visible.map((warDeck, index) => createWarDeckCard(warDeck, start + index, index === 0)),
   );
 
-  elements.resultsSummary.textContent = `${formatNumber(results.length)} bundles found`;
+  const freshness = state.data.importedAt ? ` · ${formatImportedAt(state.data.importedAt)}` : "";
+  elements.resultsSummary.textContent = `${formatNumber(results.length)} bundles found${freshness}`;
 
   const isEmpty = results.length === 0;
   elements.emptyState.classList.toggle("hidden", !isEmpty);
@@ -801,7 +979,9 @@ async function loadWarDecks({ refresh = false } = {}) {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.message ?? "The search could not be completed.");
+      const requestError = new Error(data.message ?? "The search could not be completed.");
+      requestError.status = response.status;
+      throw requestError;
     }
 
     state.data = data;
@@ -815,6 +995,7 @@ async function loadWarDecks({ refresh = false } = {}) {
     elements.emptyTitle.textContent = "Search failed";
     elements.emptyMessage.textContent = error.message;
     elements.resultsSummary.textContent = "Search unavailable";
+    if (error.status === 404) openDataModal(error.message, true);
   } finally {
     if (state.controller === controller) {
       setLoading(false);
@@ -840,8 +1021,15 @@ async function loadCards() {
 }
 
 async function initialize() {
+  elements.bookmarkletLink.href = createBookmarklet();
+  elements.sourceLinks.forEach((link) => {
+    link.href = buildPopularDecksUrl(Number.parseInt(link.dataset.sourceDays, 10));
+  });
+
   try {
     await loadCards();
+    await loadSnapshotStatus();
+    await importDecksFromHash();
   } catch (error) {
     elements.emptyState.classList.remove("hidden");
     elements.emptyTitle.textContent = "Cards unavailable";
@@ -977,6 +1165,19 @@ elements.clearDeckButton.addEventListener("click", clearActiveDeckFilter);
 
 elements.filterCloseButton.addEventListener("click", closeFilterModal);
 
+elements.dataButton.addEventListener("click", () => openDataModal());
+elements.dataCloseButton.addEventListener("click", closeDataModal);
+
+elements.dataModal.addEventListener("click", (event) => {
+  if (event.target === elements.dataModal) closeDataModal();
+});
+
+elements.bookmarkletLink.addEventListener("click", (event) => {
+  event.preventDefault();
+  elements.dataImportMessage.textContent = "Drag the button into Safari's Favorites Bar.";
+  elements.dataImportMessage.classList.remove("error");
+});
+
 elements.filterModal.addEventListener("click", (event) => {
   if (event.target === elements.filterModal) {
     closeFilterModal();
@@ -986,6 +1187,9 @@ elements.filterModal.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !elements.filterModal.classList.contains("hidden")) {
     closeFilterModal();
+  }
+  if (event.key === "Escape" && !elements.dataModal.classList.contains("hidden")) {
+    closeDataModal();
   }
 });
 

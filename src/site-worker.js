@@ -1,6 +1,7 @@
 const CARD_CATALOG = /*__CARD_CATALOG__*/ [];
 const CARD_KEYS = new Set(CARD_CATALOG.map((card) => card.key));
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_IMPORT_BYTES = 64 * 1024;
 const ROYALE_API_ORIGIN = "https://royaleapi.com";
 const VALID_DAYS = new Set([1, 3, 7]);
 const WAR_DECK_SIZE = 4;
@@ -35,38 +36,6 @@ function jsonResponse(request, value, status = 200) {
   return new Response(request.method === "HEAD" ? null : body, { status, headers });
 }
 
-function appendCardFilters(params, key, cards) {
-  cards.forEach((card) => params.append(key, card));
-}
-
-function buildPopularDecksUrl({ days = 1, size = 30, includeCards = [], excludeCards = [] }) {
-  if (!VALID_DAYS.has(days)) {
-    throw new Error(`Date range must be 1, 3, or 7 days; received ${days}.`);
-  }
-
-  const url = new URL("/decks/popular", ROYALE_API_ORIGIN);
-  const params = new URLSearchParams({
-    time: `${days}d`,
-    sort: "rating",
-    size: String(size),
-    players: "PvP",
-    min_ranked_trophies: "0",
-    max_ranked_trophies: "4400",
-    min_elixir: "1",
-    max_elixir: "9",
-    evo: "None",
-    min_cycle_elixir: "4",
-    max_cycle_elixir: "28",
-    mode: "detail",
-    type: "TopRanked",
-    global_exclude: "false",
-  });
-  appendCardFilters(params, "inc", includeCards);
-  appendCardFilters(params, "exc", excludeCards);
-  url.search = params.toString();
-  return url.toString();
-}
-
 function normalizeCardSlug(slug) {
   return slug.replace(/-(?:ev\d+|hero)$/u, "");
 }
@@ -75,7 +44,10 @@ function parseDeckStatsHref(href) {
   const url = new URL(href, ROYALE_API_ORIGIN);
   url.protocol = "https:";
   const prefix = "/decks/stats/";
-  if (!url.pathname.startsWith(prefix)) {
+  if (
+    !["royaleapi.com", "www.royaleapi.com"].includes(url.hostname) ||
+    !url.pathname.startsWith(prefix)
+  ) {
     throw new Error(`Not a RoyaleAPI deck stats URL: ${href}`);
   }
 
@@ -94,74 +66,156 @@ function parseDeckStatsHref(href) {
   return { cards, baseCards, statsUrl: url.toString() };
 }
 
-function parseDecksFromMarkdown(markdown) {
-  const headings = [...markdown.matchAll(/^#### (.+)$/gmu)];
-  const decks = [];
-
-  for (let index = 0; index < headings.length; index += 1) {
-    const heading = headings[index];
-    const sectionStart = heading.index + heading[0].length;
-    const sectionEnd = headings[index + 1]?.index ?? markdown.length;
-    const section = markdown.slice(sectionStart, sectionEnd);
-    const statsUrls = [
-      ...new Set(
-        [...section.matchAll(/https?:\/\/royaleapi\.com\/decks\/stats\/[^)\s]+/gu)].map(
-          (match) => match[0],
-        ),
-      ),
-    ];
-    if (statsUrls.length !== 1) continue;
-
-    const cardNames = [
-      ...new Set(
-        [...section.matchAll(/\[!\[Image \d+:\s*([^\]]+)\]/gu)].map((match) => match[1].trim()),
-      ),
-    ];
-    const statsRow = section.match(
-      /\|\s*[\d,]+\s*\|\s*[\d.,%]+\s*\|\s*([\d.]+)%\s*\|\s*[\d.]+%\s*\|\s*[\d.]+%\s*\|/u,
-    );
-    decks.push({
-      rank: decks.length + 1,
-      name: heading[1].trim(),
-      cardNames,
-      winRate: statsRow ? Number.parseFloat(statsRow[1]) : null,
-      ...parseDeckStatsHref(statsUrls[0]),
-    });
+function deckDataBucket(env) {
+  if (!env.DECK_DATA) {
+    throw new Error("Deck snapshot storage is unavailable.");
   }
-
-  if (decks.length === 0) {
-    throw new Error("The rendered RoyaleAPI document contained no valid decks.");
-  }
-  return decks;
+  return env.DECK_DATA;
 }
 
-async function extractPopularDecks({
-  days = 1,
-  size = 30,
-  includeCards = [],
-  excludeCards = [],
-} = {}) {
-  const source = new URL(buildPopularDecksUrl({ days, size, includeCards, excludeCards }));
-  const proxyUrl = `https://r.jina.ai/http://royaleapi.com${source.pathname}${source.search}`;
-  let lastError;
+function snapshotKey(days) {
+  return `royaleapi-snapshots/${days}d.json`;
+}
 
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    try {
-      const response = await fetch(proxyUrl, { headers: { Accept: "text/plain" } });
-      if (!response.ok) {
-        throw new Error(`Read-only proxy returned HTTP ${response.status}.`);
-      }
-      const decks = parseDecksFromMarkdown(await response.text());
-      if (decks.length > size) {
-        throw new Error(`RoyaleAPI returned ${decks.length} decks when at most ${size} were requested.`);
-      }
-      return { timeRange: `${days}d`, decks };
-    } catch (error) {
-      lastError = error;
-      if (attempt === 1) await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
+function snapshotSummary(snapshot) {
+  return {
+    timeRange: snapshot.timeRange,
+    importedAt: snapshot.importedAt,
+    deckCount: snapshot.decks.length,
+    sourceUrl: snapshot.sourceUrl,
+  };
+}
+
+function normalizeImportPayload(
+  payload,
+  importedAt = payload?.importedAt ?? new Date().toISOString(),
+) {
+  if (!payload || typeof payload !== "object") {
+    throw new RequestError("Imported deck data must be a JSON object.");
   }
-  throw lastError;
+
+  const days = Number.parseInt(String(payload.timeRange).replace(/d$/u, ""), 10);
+  if (!VALID_DAYS.has(days) || payload.timeRange !== `${days}d`) {
+    throw new RequestError("Imported timeRange must be 1d, 3d, or 7d.");
+  }
+
+  let sourceUrl;
+  try {
+    sourceUrl = new URL(payload.sourceUrl);
+  } catch {
+    throw new RequestError("Imported data must include its RoyaleAPI source URL.");
+  }
+  if (
+    sourceUrl.protocol !== "https:" ||
+    !["royaleapi.com", "www.royaleapi.com"].includes(sourceUrl.hostname) ||
+    sourceUrl.pathname !== "/decks/popular"
+  ) {
+    throw new RequestError("Imported data must come from RoyaleAPI's popular-decks page.");
+  }
+  if (sourceUrl.searchParams.get("time") !== `${days}d`) {
+    throw new RequestError("The imported meta window does not match its RoyaleAPI page.");
+  }
+
+  if (!Array.isArray(payload.decks) || payload.decks.length < 4 || payload.decks.length > 30) {
+    throw new RequestError("Imported data must contain between 4 and 30 decks.");
+  }
+
+  const seenDecks = new Set();
+  const decks = payload.decks.map((deck, index) => {
+    if (!deck || typeof deck !== "object") {
+      throw new RequestError(`Imported deck ${index + 1} is invalid.`);
+    }
+    let parsed;
+    try {
+      parsed = parseDeckStatsHref(deck.statsUrl);
+    } catch (error) {
+      throw new RequestError(`Imported deck ${index + 1} is invalid: ${error.message}`);
+    }
+    parsed.cards.forEach((card) => {
+      if (!CARD_KEYS.has(card)) {
+        throw new RequestError(`Imported deck ${index + 1} contains unknown card ${card}.`);
+      }
+    });
+    if (seenDecks.has(parsed.statsUrl)) {
+      throw new RequestError(`Imported deck ${index + 1} is duplicated.`);
+    }
+    seenDecks.add(parsed.statsUrl);
+
+    const name = typeof deck.name === "string" ? deck.name.trim().slice(0, 120) : "";
+    const winRate = deck.winRate == null ? null : Number(deck.winRate);
+    if (winRate !== null && (!Number.isFinite(winRate) || winRate < 0 || winRate > 100)) {
+      throw new RequestError(`Imported deck ${index + 1} has an invalid win rate.`);
+    }
+
+    return {
+      rank: index + 1,
+      name: name || `Deck ${index + 1}`,
+      cardNames: [],
+      winRate,
+      ...parsed,
+    };
+  });
+
+  return {
+    version: 1,
+    source: "RoyaleAPI bookmarklet",
+    sourceUrl: sourceUrl.toString(),
+    timeRange: `${days}d`,
+    importedAt,
+    decks,
+  };
+}
+
+async function loadDeckSnapshot(env, days) {
+  const object = await deckDataBucket(env).get(snapshotKey(days));
+  if (!object) {
+    throw new RequestError(
+      `No ${days}-day deck data has been imported yet. Open Update data to add it from RoyaleAPI.`,
+      404,
+    );
+  }
+  return normalizeImportPayload(await object.json(), object.customMetadata?.importedAt);
+}
+
+async function listDeckSnapshots(env) {
+  return Promise.all(
+    [...VALID_DAYS].map(async (days) => {
+      const object = await deckDataBucket(env).get(snapshotKey(days));
+      if (!object) return { timeRange: `${days}d`, available: false };
+      const snapshot = normalizeImportPayload(await object.json(), object.customMetadata?.importedAt);
+      return { ...snapshotSummary(snapshot), available: true };
+    }),
+  );
+}
+
+async function importDeckSnapshot(request, env) {
+  if (!request.headers.get("oai-authenticated-user-id")) {
+    throw new RequestError("Sign in to update deck data.", 403);
+  }
+  const contentLength = Number.parseInt(request.headers.get("content-length") ?? "0", 10);
+  if (contentLength > MAX_IMPORT_BYTES) {
+    throw new RequestError("Imported deck data is too large.", 413);
+  }
+
+  let payload;
+  try {
+    const body = await request.text();
+    if (new TextEncoder().encode(body).byteLength > MAX_IMPORT_BYTES) {
+      throw new RequestError("Imported deck data is too large.", 413);
+    }
+    payload = JSON.parse(body);
+  } catch (error) {
+    if (error instanceof RequestError) throw error;
+    throw new RequestError("Imported deck data is not valid JSON.");
+  }
+  const snapshot = normalizeImportPayload(payload);
+  const days = Number.parseInt(snapshot.timeRange, 10);
+  await deckDataBucket(env).put(snapshotKey(days), JSON.stringify(snapshot), {
+    httpMetadata: { contentType: "application/json; charset=utf-8" },
+    customMetadata: { importedAt: snapshot.importedAt },
+  });
+  responseCache.clear();
+  return snapshotSummary(snapshot);
 }
 
 function validateCardKeys(keys, label) {
@@ -264,56 +318,47 @@ function findValidWarDecksFromPools(candidateDecks, candidatePools) {
   return warDecks;
 }
 
-async function createWarDeckResult(options) {
+function deckMatchesFilter(deck, filter) {
+  return (
+    filter.include.every((card) => deck.cards.includes(card)) &&
+    filter.exclude.every((card) => !deck.cards.includes(card))
+  );
+}
+
+async function createWarDeckResult(options, env) {
+  const snapshot = await loadDeckSnapshot(env, options.days);
+  const candidateDecks = snapshot.decks;
   const hasFilters = options.deckFilters.some(
     (filter) => filter.include.length > 0 || filter.exclude.length > 0,
   );
   if (!hasFilters) {
-    const extraction = await extractPopularDecks(options);
     return {
-      timeRange: extraction.timeRange,
-      candidateDecks: extraction.decks,
-      warDecks: findValidWarDecks(extraction.decks),
+      timeRange: snapshot.timeRange,
+      importedAt: snapshot.importedAt,
+      candidateDecks,
+      warDecks: findValidWarDecks(candidateDecks),
     };
   }
 
-  const candidateDecks = [];
-  const poolCache = new Map();
-  const candidatePools = [];
-  let timeRange = null;
-
-  for (const filter of options.deckFilters) {
-    const key = JSON.stringify(filter);
-    if (!poolCache.has(key)) {
-      const extraction = await extractPopularDecks({
-        ...options,
-        includeCards: filter.include,
-        excludeCards: filter.exclude,
-      });
-      const indexes = extraction.decks.map((deck) => {
-        candidateDecks.push(deck);
-        return candidateDecks.length - 1;
-      });
-      timeRange ??= extraction.timeRange;
-      poolCache.set(key, indexes);
-    }
-    candidatePools.push(poolCache.get(key));
-  }
+  const candidatePools = options.deckFilters.map((filter) =>
+    candidateDecks.flatMap((deck, index) => (deckMatchesFilter(deck, filter) ? [index] : [])),
+  );
 
   return {
-    timeRange,
+    timeRange: snapshot.timeRange,
+    importedAt: snapshot.importedAt,
     candidateDecks,
     warDecks: findValidWarDecksFromPools(candidateDecks, candidatePools),
   };
 }
 
-async function getWarDeckResult(options) {
+async function getWarDeckResult(options, env) {
   const key = JSON.stringify({ days: options.days, deckFilters: options.deckFilters });
   const cached = responseCache.get(key);
   if (!options.refresh && cached && cached.expiresAt > Date.now()) return cached.result;
   if (inFlight.has(key)) return inFlight.get(key);
 
-  const pending = createWarDeckResult(options).then((result) => {
+  const pending = createWarDeckResult(options, env).then((result) => {
     responseCache.set(key, { result, expiresAt: Date.now() + CACHE_TTL_MS });
     return result;
   });
@@ -354,6 +399,9 @@ const worker = {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
+      if (url.pathname === "/api/import-decks" && request.method === "POST") {
+        return jsonResponse(request, { snapshot: await importDeckSnapshot(request, env) }, 201);
+      }
       if (request.method !== "GET" && request.method !== "HEAD") {
         return jsonResponse(request, { error: "Invalid request", message: "Method not allowed" }, 405);
       }
@@ -363,8 +411,11 @@ const worker = {
       if (url.pathname === "/api/cards") {
         return jsonResponse(request, { cards: CARD_CATALOG });
       }
+      if (url.pathname === "/api/deck-snapshots") {
+        return jsonResponse(request, { snapshots: await listDeckSnapshots(env) });
+      }
       if (url.pathname === "/api/war-decks") {
-        return jsonResponse(request, await getWarDeckResult(parseApiOptions(url)));
+        return jsonResponse(request, await getWarDeckResult(parseApiOptions(url), env));
       }
       if (url.pathname === "/" || url.pathname === "/index.html") {
         return serveIndex(request, env, url);
