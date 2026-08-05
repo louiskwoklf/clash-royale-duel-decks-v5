@@ -35,8 +35,9 @@ const elements = {
   resultsList: document.querySelector("#results-list"),
   resultsSummary: document.querySelector("#results-summary"),
   bookmarkletLink: document.querySelector("#bookmarklet-link"),
-  snapshotRows: [...document.querySelectorAll("[data-snapshot-days]")],
-  sourceLinks: [...document.querySelectorAll("[data-source-days]")],
+  searchList: document.querySelector("#search-list"),
+  searchReadiness: document.querySelector("#search-readiness"),
+  sourceSearchButton: document.querySelector("#source-search-button"),
 };
 
 const state = {
@@ -54,6 +55,9 @@ const state = {
   // toggles apply to all four decks. Include is always deck-scoped.
   pickerScope: "deck",
   page: 0,
+  isImportReturn: false,
+  searchStatuses: new Map(),
+  statusController: null,
 };
 
 function makeElement(tagName, className, text) {
@@ -74,10 +78,17 @@ function humanizeSlug(slug) {
     .join(" ");
 }
 
-function buildPopularDecksUrl(days) {
+function canonicalSearchId(search) {
+  const params = new URLSearchParams({ time: `${search.days}d` });
+  search.include.forEach((card) => params.append("inc", card));
+  search.exclude.forEach((card) => params.append("exc", card));
+  return params.toString();
+}
+
+function buildPopularDecksUrl(search) {
   const url = new URL("https://royaleapi.com/decks/popular");
-  url.search = new URLSearchParams({
-    time: `${days}d`,
+  const params = new URLSearchParams({
+    time: `${search.days}d`,
     sort: "rating",
     size: "30",
     players: "PvP",
@@ -91,8 +102,28 @@ function buildPopularDecksUrl(days) {
     mode: "detail",
     type: "TopRanked",
     global_exclude: "false",
-  }).toString();
+  });
+  search.include.forEach((card) => params.append("inc", card));
+  search.exclude.forEach((card) => params.append("exc", card));
+  url.search = params.toString();
   return url.toString();
+}
+
+function uniqueDeckSearches() {
+  const searches = new Map();
+  state.deckFilters.forEach((filter, index) => {
+    const search = {
+      days: state.days,
+      include: [...new Set(filter.include)].sort(),
+      exclude: [...new Set([...state.globalExclude, ...filter.exclude])].sort(),
+    };
+    search.id = canonicalSearchId(search);
+    if (!searches.has(search.id)) {
+      searches.set(search.id, { ...search, deckSlots: [], sourceUrl: buildPopularDecksUrl(search) });
+    }
+    searches.get(search.id).deckSlots.push(index + 1);
+  });
+  return [...searches.values()];
 }
 
 // This function is serialized into the Safari favorite, so it must remain
@@ -107,10 +138,15 @@ function collectRoyaleApiDecks(targetOrigin) {
 
     const timeRange = pageUrl.searchParams.get("time");
     if (!["1d", "3d", "7d"].includes(timeRange)) {
-      throw new Error("Open the 1-day, 3-day, or 7-day link from War Deck Finder first.");
+      throw new Error("Open a search page from War Deck Finder first.");
     }
 
-    const decks = [...document.querySelectorAll("#decksContainer .deck_segment")]
+    const deckContainer = document.querySelector("#decksContainer");
+    if (!deckContainer) {
+      throw new Error("The deck list is not ready. Finish verification and wait for RoyaleAPI to load.");
+    }
+
+    const decks = [...deckContainer.querySelectorAll(".deck_segment")]
       .map((segment, index) => {
         const statsAnchor = segment.querySelector('a[href^="/decks/stats/"]');
         const statsText = segment.textContent ?? "";
@@ -124,10 +160,7 @@ function collectRoyaleApiDecks(targetOrigin) {
       })
       .filter((deck) => deck.statsUrl);
 
-    if (decks.length < 4) {
-      throw new Error("No rendered decks were found. Wait for the deck list to load, then try again.");
-    }
-
+    pageUrl.hash = "";
     const json = JSON.stringify({
       timeRange,
       sourceUrl: pageUrl.toString(),
@@ -139,7 +172,7 @@ function collectRoyaleApiDecks(targetOrigin) {
       binary += String.fromCharCode(byte);
     });
     const encoded = btoa(binary);
-    window.open(`${targetOrigin}/#import=${encoded}`, "_blank", "noopener");
+    window.location.assign(`${targetOrigin}/#import=${encoded}`);
   } catch (error) {
     window.alert(`War Deck Finder: ${error.message}`);
   }
@@ -188,6 +221,7 @@ function resetSearchResults() {
 // Filters changed after a search: keep the results visible but flag them as
 // outdated instead of wiping the list.
 function markResultsStale() {
+  invalidateSearchStatus();
   state.controller?.abort();
   state.controller = null;
   if (state.loading) setLoading(false);
@@ -201,13 +235,14 @@ function markResultsStale() {
   render();
 }
 
-function openDataModal(message = "", isError = false) {
+function openDataModal(message = "", isError = false, refreshStatus = true) {
   elements.dataModal.classList.remove("hidden");
   document.body.classList.add("modal-open");
   elements.dataImportMessage.textContent = message;
   elements.dataImportMessage.classList.toggle("error", isError);
   elements.dataCloseButton.focus();
-  loadSnapshotStatus();
+  renderSearchRows();
+  if (refreshStatus) void loadSearchStatus();
 }
 
 function closeDataModal() {
@@ -217,35 +252,143 @@ function closeDataModal() {
   }
 }
 
-function setActiveDays(days) {
-  state.days = days;
-  elements.rangeTabs.forEach((tab) => {
-    const active = Number.parseInt(tab.dataset.days, 10) === days;
-    tab.classList.toggle("active", active);
-    tab.setAttribute("aria-pressed", String(active));
-  });
-  moveRangeIndicator(activeRangeTab());
+function deckSlotLabel(deckSlots) {
+  const label = deckSlots.length === 1 ? "Deck" : "Decks";
+  return `${label} ${deckSlots.join(" & ")}`;
 }
 
-async function loadSnapshotStatus() {
+function describeSearch(search) {
+  const parts = [];
+  if (search.include.length > 0) {
+    parts.push(`Include ${search.include.map(cardNameForKey).join(", ")}`);
+  }
+  if (search.exclude.length > 0) {
+    parts.push(`Exclude ${search.exclude.map(cardNameForKey).join(", ")}`);
+  }
+  return parts.join(" · ") || "No card filters";
+}
+
+function openSearchTab(search) {
+  const tab = window.open("about:blank", "_blank");
+  if (!tab) return false;
   try {
-    const response = await fetch("/api/deck-snapshots");
+    tab.opener = null;
+    tab.location.replace(search.sourceUrl);
+    return true;
+  } catch {
+    tab.close();
+    return false;
+  }
+}
+
+function createSearchRow(search, status = state.searchStatuses.get(search.id)) {
+  const row = makeElement("div", "search-row");
+  const main = makeElement("div", "search-row-main");
+  const title = makeElement("div", "search-row-title");
+  title.append(
+    makeElement("strong", "", status?.label ?? "RoyaleAPI search"),
+    makeElement(
+      "span",
+      "search-slot-badge",
+      search.deckSlots?.length ? deckSlotLabel(search.deckSlots) : "Imported",
+    ),
+  );
+  const description = makeElement("span", "search-description", describeSearch(search));
+  const statusLabel = makeElement("span", "search-state");
+  if (status?.available) {
+    statusLabel.textContent = `${status.deckCount} candidates · ${formatImportedAt(status.importedAt)}`;
+    statusLabel.classList.add("ready");
+  } else if (status) {
+    statusLabel.textContent = "Needs import";
+    statusLabel.classList.add("missing");
+  } else {
+    statusLabel.textContent = "Checking saved results…";
+  }
+  main.append(title, description, statusLabel);
+
+  const openButton = makeElement("button", "search-open-button", "Open");
+  openButton.type = "button";
+  openButton.addEventListener("click", () => {
+    if (!openSearchTab(search)) {
+      elements.dataImportMessage.textContent =
+        "Safari blocked that tab. Allow pop-ups for this site, then try again.";
+      elements.dataImportMessage.classList.add("error");
+    }
+  });
+  row.append(main, openButton);
+  return row;
+}
+
+function renderSearchRows(searches = uniqueDeckSearches()) {
+  elements.searchList.replaceChildren(
+    ...searches.map((search, index) => {
+      const status = state.searchStatuses.get(search.id);
+      return createSearchRow(search, status ? { ...status, label: `Search ${index + 1}` } : null);
+    }),
+  );
+}
+
+function renderSearchReadiness() {
+  const searches = uniqueDeckSearches();
+  const ready = searches.filter((search) => state.searchStatuses.get(search.id)?.available).length;
+  elements.searchReadiness.classList.toggle("searches-ready", ready === searches.length);
+  elements.searchReadiness.classList.toggle(
+    "searches-missing",
+    state.searchStatuses.size > 0 && ready < searches.length,
+  );
+  if (state.searchStatuses.size === 0) {
+    elements.searchReadiness.textContent =
+      `${searches.length} unique RoyaleAPI ${searches.length === 1 ? "search" : "searches"} for these four decks.`;
+  } else if (ready === searches.length) {
+    elements.searchReadiness.textContent =
+      `All ${searches.length} candidate ${searches.length === 1 ? "search is" : "searches are"} ready.`;
+  } else {
+    elements.searchReadiness.textContent =
+      `${ready} of ${searches.length} candidate searches ready — import the missing ${searches.length - ready}.`;
+  }
+}
+
+function invalidateSearchStatus() {
+  state.statusController?.abort();
+  state.statusController = null;
+  state.searchStatuses = new Map();
+  renderSearchReadiness();
+  if (!elements.dataModal.classList.contains("hidden")) renderSearchRows();
+}
+
+async function loadSearchStatus() {
+  state.statusController?.abort();
+  const controller = new AbortController();
+  state.statusController = controller;
+  try {
+    const query = new URLSearchParams({ time: String(state.days) });
+    appendDeckFilters(query);
+    const response = await fetch(`/api/deck-searches?${query}`, { signal: controller.signal });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message ?? "Snapshot status is unavailable.");
-    const byDays = new Map(
-      data.snapshots.map((snapshot) => [Number.parseInt(snapshot.timeRange, 10), snapshot]),
-    );
-    elements.snapshotRows.forEach((row) => {
-      const snapshot = byDays.get(Number.parseInt(row.dataset.snapshotDays, 10));
-      const stateLabel = row.querySelector(".snapshot-state");
-      stateLabel.textContent = snapshot?.available
-        ? `${formatImportedAt(snapshot.importedAt)} · ${snapshot.deckCount} decks`
-        : "Not imported yet";
-    });
+    if (!response.ok) throw new Error(data.message ?? "Search status is unavailable.");
+    state.searchStatuses = new Map(data.searches.map((search) => [search.id, search]));
+    renderSearchRows();
+    renderSearchReadiness();
   } catch (error) {
-    elements.snapshotRows.forEach((row) => {
-      row.querySelector(".snapshot-state").textContent = error.message;
-    });
+    if (error.name === "AbortError") return;
+    elements.dataImportMessage.textContent = error.message;
+    elements.dataImportMessage.classList.add("error");
+  } finally {
+    if (state.statusController === controller) state.statusController = null;
+  }
+}
+
+function openCurrentSearches() {
+  const searches = uniqueDeckSearches();
+  const opened = searches.filter(openSearchTab).length;
+  if (opened < searches.length) {
+    openDataModal(
+      `Safari opened ${opened} of ${searches.length} pages. Allow pop-ups, or use each Open button below.`,
+      true,
+    );
+  } else {
+    elements.searchReadiness.textContent =
+      `${opened} RoyaleAPI ${opened === 1 ? "page" : "pages"} opened — use the favorite in each tab.`;
   }
 }
 
@@ -258,9 +401,10 @@ function decodeImportPayload(encoded) {
 async function importDecksFromHash() {
   if (!window.location.hash.startsWith("#import=")) return;
 
+  state.isImportReturn = true;
   const encoded = window.location.hash.slice("#import=".length);
   window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-  openDataModal("Importing decks from Safari…");
+  openDataModal("Importing this RoyaleAPI search…", false, false);
 
   try {
     const payload = decodeImportPayload(encoded);
@@ -272,14 +416,25 @@ async function importDecksFromHash() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.message ?? "The deck import failed.");
 
-    const days = Number.parseInt(data.snapshot.timeRange, 10);
-    setActiveDays(days);
+    const imported = data.search;
     elements.dataImportMessage.textContent =
-      `${data.snapshot.deckCount} decks imported for the ${days}-day window.`;
+      `${imported.deckCount} candidates imported. Return to the original Finder tab when this tab closes.`;
     elements.dataImportMessage.classList.remove("error");
-    await loadSnapshotStatus();
-    closeDataModal();
-    await loadWarDecks({ refresh: true });
+    const importedSearch = {
+      days: Number.parseInt(imported.timeRange, 10),
+      include: imported.include,
+      exclude: imported.exclude,
+      id: imported.id,
+      sourceUrl: imported.sourceUrl,
+      deckSlots: [],
+    };
+    elements.searchList.replaceChildren(createSearchRow(importedSearch, { ...imported, available: true }));
+    if ("BroadcastChannel" in window) {
+      const channel = new BroadcastChannel("war-deck-finder-imports");
+      channel.postMessage({ type: "search-imported", id: imported.id });
+      channel.close();
+    }
+    window.setTimeout(() => window.close(), 900);
   } catch (error) {
     elements.dataImportMessage.textContent = error.message;
     elements.dataImportMessage.classList.add("error");
@@ -609,6 +764,7 @@ function renderDeckFilterPanel() {
   renderDeckSlots();
   renderExcludeStrip();
   updatePickerSelectionState();
+  renderSearchReadiness();
 }
 
 function setLoading(loading) {
@@ -936,14 +1092,17 @@ function renderResults() {
     ...visible.map((warDeck, index) => createWarDeckCard(warDeck, start + index, index === 0)),
   );
 
-  const freshness = state.data.importedAt ? ` · ${formatImportedAt(state.data.importedAt)}` : "";
-  elements.resultsSummary.textContent = `${formatNumber(results.length)} bundles found${freshness}`;
+  const searchCount = state.data.searches?.length ?? 0;
+  const searchLabel = searchCount === 1 ? "search" : "searches";
+  elements.resultsSummary.textContent =
+    `${formatNumber(results.length)} bundles found · ${searchCount} candidate ${searchLabel}`;
 
   const isEmpty = results.length === 0;
   elements.emptyState.classList.toggle("hidden", !isEmpty);
   if (isEmpty) {
     elements.emptyTitle.textContent = "No valid war decks";
-    elements.emptyMessage.textContent = "This meta window has no four-deck combinations with 32 unique cards.";
+    elements.emptyMessage.textContent =
+      "These four candidate pools have no combinations with 32 unique cards.";
   }
 
   renderPagination(isEmpty ? 0 : totalPages);
@@ -1022,14 +1181,14 @@ async function loadCards() {
 
 async function initialize() {
   elements.bookmarkletLink.href = createBookmarklet();
-  elements.sourceLinks.forEach((link) => {
-    link.href = buildPopularDecksUrl(Number.parseInt(link.dataset.sourceDays, 10));
-  });
 
   try {
     await loadCards();
-    await loadSnapshotStatus();
-    await importDecksFromHash();
+    if (window.location.hash.startsWith("#import=")) {
+      await importDecksFromHash();
+    } else {
+      await loadSearchStatus();
+    }
   } catch (error) {
     elements.emptyState.classList.remove("hidden");
     elements.emptyTitle.textContent = "Cards unavailable";
@@ -1166,6 +1325,7 @@ elements.clearDeckButton.addEventListener("click", clearActiveDeckFilter);
 elements.filterCloseButton.addEventListener("click", closeFilterModal);
 
 elements.dataButton.addEventListener("click", () => openDataModal());
+elements.sourceSearchButton.addEventListener("click", openCurrentSearches);
 elements.dataCloseButton.addEventListener("click", closeDataModal);
 
 elements.dataModal.addEventListener("click", (event) => {
@@ -1202,5 +1362,12 @@ elements.plannerExcludeButton.addEventListener("click", () => {
 });
 
 elements.plannerClearAllButton.addEventListener("click", clearAllFilters);
+
+if ("BroadcastChannel" in window) {
+  const importChannel = new BroadcastChannel("war-deck-finder-imports");
+  importChannel.addEventListener("message", (event) => {
+    if (event.data?.type === "search-imported" && !state.isImportReturn) void loadSearchStatus();
+  });
+}
 
 initialize();

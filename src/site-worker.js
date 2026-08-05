@@ -9,9 +9,10 @@ const responseCache = new Map();
 const inFlight = new Map();
 
 class RequestError extends Error {
-  constructor(message, statusCode = 400) {
+  constructor(message, statusCode = 400, details = {}) {
     super(message);
     this.statusCode = statusCode;
+    this.details = details;
   }
 }
 
@@ -68,22 +69,144 @@ function parseDeckStatsHref(href) {
 
 function deckDataBucket(env) {
   if (!env.DECK_DATA) {
-    throw new Error("Deck snapshot storage is unavailable.");
+    throw new Error("Deck search storage is unavailable.");
   }
   return env.DECK_DATA;
 }
 
-function snapshotKey(days) {
-  return `royaleapi-snapshots/${days}d.json`;
+function validateCardKeys(keys, label) {
+  keys.forEach((key) => {
+    if (!CARD_KEYS.has(key)) throw new RequestError(`Unknown card key in ${label}: ${key}`);
+  });
 }
 
-function snapshotSummary(snapshot) {
+function normalizeSearch(days, include = [], exclude = []) {
+  if (!VALID_DAYS.has(days)) throw new RequestError("time must be 1, 3, or 7");
+
+  const normalizedInclude = [...new Set(include.filter(Boolean))].sort();
+  const normalizedExclude = [...new Set(exclude.filter(Boolean))].sort();
+  validateCardKeys(normalizedInclude, "include cards");
+  validateCardKeys(normalizedExclude, "exclude cards");
+
+  const overlap = normalizedInclude.find((card) => normalizedExclude.includes(card));
+  if (overlap) throw new RequestError(`A search cannot include and exclude ${overlap}`);
+  if (normalizedInclude.length > 8) {
+    throw new RequestError("A deck search cannot include more than 8 cards");
+  }
+
+  const search = { days, include: normalizedInclude, exclude: normalizedExclude };
+  search.id = searchId(search);
+  return search;
+}
+
+function searchId(search) {
+  const params = new URLSearchParams({ time: `${search.days}d` });
+  search.include.forEach((card) => params.append("inc", card));
+  search.exclude.forEach((card) => params.append("exc", card));
+  return params.toString();
+}
+
+function searchStorageKey(search) {
+  return `royaleapi-searches/v2/${encodeURIComponent(search.id)}.json`;
+}
+
+function buildPopularDecksUrl(search) {
+  const url = new URL("/decks/popular", ROYALE_API_ORIGIN);
+  const params = new URLSearchParams({
+    time: `${search.days}d`,
+    sort: "rating",
+    size: "30",
+    players: "PvP",
+    min_ranked_trophies: "0",
+    max_ranked_trophies: "4400",
+    min_elixir: "1",
+    max_elixir: "9",
+    evo: "None",
+    min_cycle_elixir: "4",
+    max_cycle_elixir: "28",
+    mode: "detail",
+    type: "TopRanked",
+    global_exclude: "false",
+  });
+  search.include.forEach((card) => params.append("inc", card));
+  search.exclude.forEach((card) => params.append("exc", card));
+  url.search = params.toString();
+  return url.toString();
+}
+
+function searchFromSourceUrl(sourceUrl) {
+  let url;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    throw new RequestError("Imported data must include its RoyaleAPI source URL.");
+  }
+  if (
+    url.protocol !== "https:" ||
+    !["royaleapi.com", "www.royaleapi.com"].includes(url.hostname) ||
+    url.pathname !== "/decks/popular"
+  ) {
+    throw new RequestError("Imported data must come from RoyaleAPI's popular-decks page.");
+  }
+
+  const timeRange = url.searchParams.get("time");
+  const days = Number.parseInt(String(timeRange).replace(/d$/u, ""), 10);
+  if (!VALID_DAYS.has(days) || timeRange !== `${days}d`) {
+    throw new RequestError("The RoyaleAPI search must use a 1d, 3d, or 7d meta window.");
+  }
+
+  return { url, search: normalizeSearch(days, url.searchParams.getAll("inc"), url.searchParams.getAll("exc")) };
+}
+
+function parseDeckFilters(url) {
+  return Array.from({ length: WAR_DECK_SIZE }, (_, index) => {
+    const deckNumber = index + 1;
+    try {
+      return normalizeSearch(
+        Number.parseInt(url.searchParams.get("time") ?? "1", 10),
+        url.searchParams.getAll(`d${deckNumber}inc`),
+        url.searchParams.getAll(`d${deckNumber}exc`),
+      );
+    } catch (error) {
+      if (error instanceof RequestError) {
+        throw new RequestError(error.message.replace(/^A search/u, `Deck ${deckNumber}`));
+      }
+      throw error;
+    }
+  });
+}
+
+function parseApiOptions(url) {
+  const days = Number.parseInt(url.searchParams.get("time") ?? "1", 10);
+  if (!VALID_DAYS.has(days)) throw new RequestError("time must be 1, 3, or 7");
   return {
-    timeRange: snapshot.timeRange,
-    importedAt: snapshot.importedAt,
-    deckCount: snapshot.decks.length,
-    sourceUrl: snapshot.sourceUrl,
+    days,
+    refresh: url.searchParams.get("refresh") === "true",
+    deckFilters: parseDeckFilters(url),
   };
+}
+
+function groupDeckSearches(options) {
+  const groups = new Map();
+  options.deckFilters.forEach((filter, index) => {
+    const search = normalizeSearch(options.days, filter.include, filter.exclude);
+    if (!groups.has(search.id)) {
+      groups.set(search.id, {
+        ...search,
+        deckSlots: [],
+        sourceUrl: buildPopularDecksUrl(search),
+      });
+    }
+    groups.get(search.id).deckSlots.push(index + 1);
+  });
+  return [...groups.values()];
+}
+
+function deckMatchesSearch(deck, search) {
+  return (
+    search.include.every((card) => deck.cards.includes(card)) &&
+    search.exclude.every((card) => !deck.cards.includes(card))
+  );
 }
 
 function normalizeImportPayload(
@@ -94,30 +217,12 @@ function normalizeImportPayload(
     throw new RequestError("Imported deck data must be a JSON object.");
   }
 
-  const days = Number.parseInt(String(payload.timeRange).replace(/d$/u, ""), 10);
-  if (!VALID_DAYS.has(days) || payload.timeRange !== `${days}d`) {
-    throw new RequestError("Imported timeRange must be 1d, 3d, or 7d.");
-  }
-
-  let sourceUrl;
-  try {
-    sourceUrl = new URL(payload.sourceUrl);
-  } catch {
-    throw new RequestError("Imported data must include its RoyaleAPI source URL.");
-  }
-  if (
-    sourceUrl.protocol !== "https:" ||
-    !["royaleapi.com", "www.royaleapi.com"].includes(sourceUrl.hostname) ||
-    sourceUrl.pathname !== "/decks/popular"
-  ) {
-    throw new RequestError("Imported data must come from RoyaleAPI's popular-decks page.");
-  }
-  if (sourceUrl.searchParams.get("time") !== `${days}d`) {
+  const { url: sourceUrl, search } = searchFromSourceUrl(payload.sourceUrl);
+  if (payload.timeRange !== `${search.days}d`) {
     throw new RequestError("The imported meta window does not match its RoyaleAPI page.");
   }
-
-  if (!Array.isArray(payload.decks) || payload.decks.length < 4 || payload.decks.length > 30) {
-    throw new RequestError("Imported data must contain between 4 and 30 decks.");
+  if (!Array.isArray(payload.decks) || payload.decks.length > 30) {
+    throw new RequestError("Imported data must contain no more than 30 decks.");
   }
 
   const seenDecks = new Set();
@@ -136,6 +241,9 @@ function normalizeImportPayload(
         throw new RequestError(`Imported deck ${index + 1} contains unknown card ${card}.`);
       }
     });
+    if (!deckMatchesSearch(parsed, search)) {
+      throw new RequestError(`Imported deck ${index + 1} does not match the RoyaleAPI search.`);
+    }
     if (seenDecks.has(parsed.statsUrl)) {
       throw new RequestError(`Imported deck ${index + 1} is duplicated.`);
     }
@@ -157,40 +265,52 @@ function normalizeImportPayload(
   });
 
   return {
-    version: 1,
-    source: "RoyaleAPI bookmarklet",
+    version: 2,
+    source: "RoyaleAPI Safari bookmarklet",
     sourceUrl: sourceUrl.toString(),
-    timeRange: `${days}d`,
+    timeRange: `${search.days}d`,
+    search,
     importedAt,
     decks,
   };
 }
 
-async function loadDeckSnapshot(env, days) {
-  const object = await deckDataBucket(env).get(snapshotKey(days));
-  if (!object) {
-    throw new RequestError(
-      `No ${days}-day deck data has been imported yet. Open Update data to add it from RoyaleAPI.`,
-      404,
-    );
-  }
-  return normalizeImportPayload(await object.json(), object.customMetadata?.importedAt);
+function searchSummary(record, deckSlots = []) {
+  return {
+    id: record.search.id,
+    timeRange: record.timeRange,
+    include: record.search.include,
+    exclude: record.search.exclude,
+    deckSlots,
+    importedAt: record.importedAt,
+    deckCount: record.decks.length,
+    sourceUrl: buildPopularDecksUrl(record.search),
+  };
 }
 
-async function listDeckSnapshots(env) {
+async function loadDeckSearch(env, search) {
+  const object = await deckDataBucket(env).get(searchStorageKey(search));
+  if (!object) return null;
+  const record = normalizeImportPayload(await object.json(), object.customMetadata?.importedAt);
+  if (record.search.id !== search.id) {
+    throw new Error("Stored deck search does not match its storage key.");
+  }
+  return record;
+}
+
+async function listDeckSearches(options, env) {
   return Promise.all(
-    [...VALID_DAYS].map(async (days) => {
-      const object = await deckDataBucket(env).get(snapshotKey(days));
-      if (!object) return { timeRange: `${days}d`, available: false };
-      const snapshot = normalizeImportPayload(await object.json(), object.customMetadata?.importedAt);
-      return { ...snapshotSummary(snapshot), available: true };
+    groupDeckSearches(options).map(async (group) => {
+      const record = await loadDeckSearch(env, group);
+      if (!record) return { ...group, available: false };
+      return { ...searchSummary(record, group.deckSlots), available: true };
     }),
   );
 }
 
-async function importDeckSnapshot(request, env) {
+async function importDeckSearch(request, env) {
   if (!request.headers.get("oai-authenticated-user-id")) {
-    throw new RequestError("Sign in to update deck data.", 403);
+    throw new RequestError("Sign in to import RoyaleAPI search results.", 403);
   }
   const contentLength = Number.parseInt(request.headers.get("content-length") ?? "0", 10);
   if (contentLength > MAX_IMPORT_BYTES) {
@@ -208,48 +328,14 @@ async function importDeckSnapshot(request, env) {
     if (error instanceof RequestError) throw error;
     throw new RequestError("Imported deck data is not valid JSON.");
   }
-  const snapshot = normalizeImportPayload(payload);
-  const days = Number.parseInt(snapshot.timeRange, 10);
-  await deckDataBucket(env).put(snapshotKey(days), JSON.stringify(snapshot), {
+
+  const record = normalizeImportPayload(payload);
+  await deckDataBucket(env).put(searchStorageKey(record.search), JSON.stringify(record), {
     httpMetadata: { contentType: "application/json; charset=utf-8" },
-    customMetadata: { importedAt: snapshot.importedAt },
+    customMetadata: { importedAt: record.importedAt },
   });
   responseCache.clear();
-  return snapshotSummary(snapshot);
-}
-
-function validateCardKeys(keys, label) {
-  keys.forEach((key) => {
-    if (!CARD_KEYS.has(key)) throw new RequestError(`Unknown card key in ${label}: ${key}`);
-  });
-}
-
-function parseDeckFilters(url) {
-  return Array.from({ length: WAR_DECK_SIZE }, (_, index) => {
-    const deckNumber = index + 1;
-    const include = [...new Set(url.searchParams.getAll(`d${deckNumber}inc`).filter(Boolean))].sort();
-    const exclude = [...new Set(url.searchParams.getAll(`d${deckNumber}exc`).filter(Boolean))].sort();
-    validateCardKeys(include, `deck ${deckNumber} include cards`);
-    validateCardKeys(exclude, `deck ${deckNumber} exclude cards`);
-
-    const overlap = include.find((card) => exclude.includes(card));
-    if (overlap) throw new RequestError(`Deck ${deckNumber} cannot include and exclude ${overlap}`);
-    if (include.length > 8) {
-      throw new RequestError(`Deck ${deckNumber} cannot include more than 8 cards`);
-    }
-    return { include, exclude };
-  });
-}
-
-function parseApiOptions(url) {
-  const days = Number.parseInt(url.searchParams.get("time") ?? "1", 10);
-  if (!VALID_DAYS.has(days)) throw new RequestError("time must be 1, 3, or 7");
-  return {
-    days,
-    refresh: url.searchParams.get("refresh") === "true",
-    deckFilters: parseDeckFilters(url),
-    size: 30,
-  };
+  return searchSummary(record);
 }
 
 function validateCandidateDeck(deck, index) {
@@ -263,29 +349,6 @@ function validateCandidateDeck(deck, index) {
 
 function deckIdentity(deck) {
   return deck.statsUrl ?? deck.cards?.join(",") ?? deck.baseCards.join(",");
-}
-
-function findValidWarDecks(candidateDecks) {
-  candidateDecks.forEach(validateCandidateDeck);
-  const warDecks = [];
-  for (let first = 0; first < candidateDecks.length - 3; first += 1) {
-    for (let second = first + 1; second < candidateDecks.length - 2; second += 1) {
-      for (let third = second + 1; third < candidateDecks.length - 1; third += 1) {
-        for (let fourth = third + 1; fourth < candidateDecks.length; fourth += 1) {
-          const indexes = [first, second, third, fourth];
-          const decks = indexes.map((index) => candidateDecks[index]);
-          if (new Set(decks.flatMap((deck) => deck.baseCards)).size !== 32) continue;
-          warDecks.push({
-            id: indexes.join("-"),
-            candidateIndexes: indexes,
-            deckRanks: decks.map((deck, index) => deck.rank ?? indexes[index] + 1),
-            deckNames: decks.map((deck) => deck.name ?? null),
-          });
-        }
-      }
-    }
-  }
-  return warDecks;
 }
 
 function findValidWarDecksFromPools(candidateDecks, candidatePools) {
@@ -318,35 +381,43 @@ function findValidWarDecksFromPools(candidateDecks, candidatePools) {
   return warDecks;
 }
 
-function deckMatchesFilter(deck, filter) {
-  return (
-    filter.include.every((card) => deck.cards.includes(card)) &&
-    filter.exclude.every((card) => !deck.cards.includes(card))
-  );
-}
-
 async function createWarDeckResult(options, env) {
-  const snapshot = await loadDeckSnapshot(env, options.days);
-  const candidateDecks = snapshot.decks;
-  const hasFilters = options.deckFilters.some(
-    (filter) => filter.include.length > 0 || filter.exclude.length > 0,
+  const groups = groupDeckSearches(options);
+  const loaded = await Promise.all(
+    groups.map(async (group) => ({ group, record: await loadDeckSearch(env, group) })),
   );
-  if (!hasFilters) {
-    return {
-      timeRange: snapshot.timeRange,
-      importedAt: snapshot.importedAt,
-      candidateDecks,
-      warDecks: findValidWarDecks(candidateDecks),
-    };
+  const missingSearches = loaded
+    .filter(({ record }) => !record)
+    .map(({ group }) => ({
+      id: group.id,
+      deckSlots: group.deckSlots,
+      sourceUrl: group.sourceUrl,
+    }));
+  if (missingSearches.length > 0) {
+    const noun = missingSearches.length === 1 ? "search needs" : "searches need";
+    throw new RequestError(
+      `${missingSearches.length} RoyaleAPI ${noun} importing before decks can be combined.`,
+      404,
+      { missingSearches },
+    );
   }
 
+  const candidateDecks = [];
+  const poolBySearch = new Map();
+  loaded.forEach(({ group, record }) => {
+    const indexes = record.decks.map((deck) => {
+      candidateDecks.push(deck);
+      return candidateDecks.length - 1;
+    });
+    poolBySearch.set(group.id, indexes);
+  });
   const candidatePools = options.deckFilters.map((filter) =>
-    candidateDecks.flatMap((deck, index) => (deckMatchesFilter(deck, filter) ? [index] : [])),
+    poolBySearch.get(normalizeSearch(options.days, filter.include, filter.exclude).id),
   );
 
   return {
-    timeRange: snapshot.timeRange,
-    importedAt: snapshot.importedAt,
+    timeRange: `${options.days}d`,
+    searches: loaded.map(({ group, record }) => searchSummary(record, group.deckSlots)),
     candidateDecks,
     warDecks: findValidWarDecksFromPools(candidateDecks, candidatePools),
   };
@@ -400,7 +471,7 @@ const worker = {
     const url = new URL(request.url);
     try {
       if (url.pathname === "/api/import-decks" && request.method === "POST") {
-        return jsonResponse(request, { snapshot: await importDeckSnapshot(request, env) }, 201);
+        return jsonResponse(request, { search: await importDeckSearch(request, env) }, 201);
       }
       if (request.method !== "GET" && request.method !== "HEAD") {
         return jsonResponse(request, { error: "Invalid request", message: "Method not allowed" }, 405);
@@ -411,8 +482,8 @@ const worker = {
       if (url.pathname === "/api/cards") {
         return jsonResponse(request, { cards: CARD_CATALOG });
       }
-      if (url.pathname === "/api/deck-snapshots") {
-        return jsonResponse(request, { snapshots: await listDeckSnapshots(env) });
+      if (url.pathname === "/api/deck-searches") {
+        return jsonResponse(request, { searches: await listDeckSearches(parseApiOptions(url), env) });
       }
       if (url.pathname === "/api/war-decks") {
         return jsonResponse(request, await getWarDeckResult(parseApiOptions(url), env));
@@ -428,6 +499,7 @@ const worker = {
         {
           error: status >= 500 ? "Unable to build war decks" : "Invalid request",
           message: error.message,
+          ...(error.details ?? {}),
         },
         status,
       );
