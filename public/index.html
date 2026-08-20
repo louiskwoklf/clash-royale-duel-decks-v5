@@ -26,7 +26,7 @@
   </head>
   <body>
     <div class="app-shell">
-      <!-- Compact white brand bar -->
+      <!-- Compact orange brand bar -->
       <header class="site-header">
         <a class="brand" href="/" aria-label="War Deck Finder home">
           <svg class="brand-mark" viewBox="0 0 100 112" aria-hidden="true">
@@ -63,34 +63,47 @@
           <p>Four current-meta decks. 32 unique cards. Zero overlaps.</p>
         </div>
 
-        <div class="control-strip-actions">
-          <span class="meta-label">Meta window</span>
+        <div class="control-strip-workflow">
+          <div class="control-strip-actions">
+            <span class="meta-label">Meta window</span>
 
-          <div class="range-tabs" role="group" aria-label="Meta date range">
-            <span class="range-tab-indicator" aria-hidden="true"></span>
-            <button class="range-tab active" type="button" data-days="1" aria-pressed="true">
-              1 day
+            <div class="range-tabs" role="group" aria-label="Meta date range">
+              <span class="range-tab-indicator" aria-hidden="true"></span>
+              <button class="range-tab active" type="button" data-days="1" aria-pressed="true">
+                1 day
+              </button>
+              <button class="range-tab" type="button" data-days="3" aria-pressed="false">
+                3 days
+              </button>
+              <button class="range-tab" type="button" data-days="7" aria-pressed="false">
+                7 days
+              </button>
+            </div>
+
+            <button class="data-button" id="data-button" type="button">
+              Safari setup
             </button>
-            <button class="range-tab" type="button" data-days="3" aria-pressed="false">
-              3 days
+
+            <button class="source-search-button" id="source-search-button" type="button">
+              Open all RoyaleAPI searches
             </button>
-            <button class="range-tab" type="button" data-days="7" aria-pressed="false">
-              7 days
+
+            <button class="refresh-button" id="refresh-button" type="button">
+              <span class="refresh-icon" aria-hidden="true">↻</span>
+              Find decks
             </button>
           </div>
 
-          <button class="data-button" id="data-button" type="button">
-            Safari setup
-          </button>
-
-          <button class="source-search-button" id="source-search-button" type="button">
-            Open RoyaleAPI searches
-          </button>
-
-          <button class="refresh-button" id="refresh-button" type="button">
-            <span class="refresh-icon" aria-hidden="true">↻</span>
-            Find decks
-          </button>
+          <div class="source-search-status">
+            <p class="search-readiness" id="search-readiness" aria-live="polite">
+              Checking saved deck data…
+            </p>
+            <div
+              class="deck-search-actions"
+              id="deck-search-actions"
+              aria-label="Individual RoyaleAPI deck searches"
+            ></div>
+          </div>
         </div>
       </section>
 
@@ -122,9 +135,6 @@
 
           <div class="deck-slot-grid" id="deck-slot-grid" aria-label="Deck include filters"></div>
 
-          <p class="planner-hint" id="search-readiness" aria-live="polite">
-            Select a deck to choose its cards.
-          </p>
         </aside>
 
         <section class="results-column">
@@ -160,7 +170,7 @@
       </footer>
     </div>
 
-    <!-- Safari bookmarklet setup and exact-search status -->
+    <!-- Safari bookmarklet setup -->
     <div class="filter-modal hidden" id="data-modal">
       <div
         class="card-filter-editor data-editor"
@@ -191,7 +201,7 @@
         <ol class="data-steps">
           <li>In Safari, choose <strong>View → Show Favorites Bar</strong>.</li>
           <li>Remove the older Finder favorite, then drag the orange button below into the bar.</li>
-          <li>Configure all four decks and click <strong>Open RoyaleAPI searches</strong>.</li>
+          <li>Configure all four decks and click <strong>Open all RoyaleAPI searches</strong>.</li>
           <li>Wait for each result page, then click the saved favorite in every tab.</li>
         </ol>
 
@@ -204,7 +214,6 @@
 
         <p class="data-import-message" id="data-import-message" aria-live="polite"></p>
 
-        <div class="search-list" id="search-list" aria-label="RoyaleAPI candidate searches"></div>
       </div>
     </div>
 

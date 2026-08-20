@@ -104,7 +104,9 @@ test("Sites worker serves the finished page with absolute social metadata", asyn
   assert.match(response.headers.get("content-type"), /^text\/html/u);
   const html = await response.text();
   assert.match(html, /<title>War Deck Finder<\/title>/u);
-  assert.match(html, /Open RoyaleAPI searches/u);
+  assert.match(html, /Open all RoyaleAPI searches/u);
+  assert.match(html, /id="deck-search-actions"/u);
+  assert.doesNotMatch(html, /id="search-list"/u);
   assert.match(html, /https:\/\/war-decks\.example\/og\.png/u);
   assert.doesNotMatch(html, /__SOCIAL_IMAGE_METADATA__/u);
   assert.doesNotMatch(html, /Update data/u);
