@@ -17,6 +17,23 @@ Each import is validated and stored against its exact meta window, include cards
 exclude cards. The Finder then evaluates the Cartesian product of the four candidate
 pools and keeps only bundles whose 32 normalized cards are all unique.
 
+## Monthly card update
+
+1. On RoyaleAPI, open the card selector in **Filter + Sort**.
+2. In Safari or Chrome's developer tools, find `<div id="cardSelectorContent">`,
+   right-click it, and choose **Copy → Copy outerHTML**.
+3. In this project folder, run:
+
+```sh
+npm run sync-cards
+```
+
+That one command reads the copied HTML from the Mac clipboard, keeps RoyaleAPI's card
+order, skips Tower Troops, adds or updates card information, downloads missing images,
+and runs the test suite. If Clash Royale added a completely new base card, the command
+will ask once for its elixir cost. To use a saved HTML file instead, run
+`npm run sync-cards -- path/to/card-selector.html`.
+
 ## Development
 
 Build the Cloudflare Workers-compatible Sites artifact:

@@ -9,6 +9,13 @@ const CARD_CATALOG = Object.freeze([
     "baseKey": "goblins"
   },
   {
+    "key": "berserker-hero",
+    "name": "Hero Berserker",
+    "rarity": "Common",
+    "kind": "hero",
+    "baseKey": "berserker"
+  },
+  {
     "key": "knight-hero",
     "name": "Hero Knight",
     "rarity": "Common",
@@ -35,6 +42,13 @@ const CARD_CATALOG = Object.freeze([
     "rarity": "Rare",
     "kind": "hero",
     "baseKey": "tombstone"
+  },
+  {
+    "key": "valkyrie-hero",
+    "name": "Hero Valkyrie",
+    "rarity": "Rare",
+    "kind": "hero",
+    "baseKey": "valkyrie"
   },
   {
     "key": "musketeer-hero",
@@ -210,6 +224,13 @@ const CARD_CATALOG = Object.freeze([
     "rarity": "Common",
     "kind": "evolution",
     "baseKey": "royal-giant"
+  },
+  {
+    "key": "elite-barbarians-ev1",
+    "name": "Elite Barbarians Evolution",
+    "rarity": "Common",
+    "kind": "evolution",
+    "baseKey": "elite-barbarians"
   },
   {
     "key": "royal-recruits-ev1",
@@ -870,13 +891,6 @@ const CARD_CATALOG = Object.freeze([
     "baseKey": "clone"
   },
   {
-    "key": "void",
-    "name": "Void",
-    "rarity": "Epic",
-    "kind": "normal",
-    "baseKey": "void"
-  },
-  {
     "key": "vines",
     "name": "Vines",
     "rarity": "Epic",
@@ -980,6 +994,13 @@ const CARD_CATALOG = Object.freeze([
     "rarity": "Epic",
     "kind": "normal",
     "baseKey": "electro-dragon"
+  },
+  {
+    "key": "void",
+    "name": "Void",
+    "rarity": "Epic",
+    "kind": "normal",
+    "baseKey": "void"
   },
   {
     "key": "giant-skeleton",
@@ -1143,6 +1164,13 @@ const CARD_CATALOG = Object.freeze([
     "baseKey": "goblin-machine"
   },
   {
+    "key": "ronin",
+    "name": "Ronin",
+    "rarity": "Legendary",
+    "kind": "normal",
+    "baseKey": "ronin"
+  },
+  {
     "key": "graveyard",
     "name": "Graveyard",
     "rarity": "Legendary",
@@ -1176,13 +1204,6 @@ const CARD_CATALOG = Object.freeze([
     "rarity": "Legendary",
     "kind": "normal",
     "baseKey": "mega-knight"
-  },
-  {
-    "key": "ronin",
-    "name": "Ronin",
-    "rarity": "Legendary",
-    "kind": "normal",
-    "baseKey": "ronin"
   },
   {
     "key": "little-prince",
@@ -1367,7 +1388,7 @@ const ELIXIR_COSTS = Object.freeze({
   "wizard": 5,
   "x-bow": 6,
   "zap": 2,
-  "zappies": 4,
+  "zappies": 4
 });
 
 function getCardCatalog() {

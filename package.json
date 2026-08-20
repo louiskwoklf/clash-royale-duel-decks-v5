@@ -5,6 +5,7 @@
   "description": "Build four Clash Royale war decks from Safari-imported RoyaleAPI searches.",
   "scripts": {
     "build": "node src/build-site.js",
+    "sync-cards": "node scripts/sync-card-catalog.js",
     "test": "npm run build && node --test"
   },
   "engines": {
