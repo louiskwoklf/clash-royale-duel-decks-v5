@@ -1,9 +1,8 @@
 /* ==========================================================================
-   War Deck Finder — "console launch trailer"
-   Applies the PlayStation marketing system: alternating black / soft / white
-   chapters, PlayStation Blue as the single reserved accent, light-weight
-   display type over a plain Inter body, pill CTAs + 8px cards, no chrome
-   gradients or resting shadows.
+   War Deck Finder — compact Clash Royale analytics UI
+   A restrained, data-first visual system inspired by RoyaleAPI: cool-gray
+   canvas, crisp white surfaces, fine borders, compact controls, and orange as
+   the primary accent. The product layout remains intentionally unchanged.
    ========================================================================== */
 
 /* --- Tokens ------------------------------------------------------------- */
@@ -11,42 +10,47 @@
 :root {
   color-scheme: light;
 
-  --blue: #0070d1;
-  --blue-pressed: #0064b7;
-  --blue-active: #004d8d;
+  --accent: #f2711c;
+  --accent-pressed: #d95c00;
+  --blue: var(--accent);
+  --blue-pressed: var(--accent-pressed);
+  --blue-active: #c94f00;
   --on-blue: #ffffff;
 
-  --warning: #c81b3a;
-  --warning-tint: rgba(200, 27, 58, 0.08);
+  --link: #2185d0;
+  --link-pressed: #1678c2;
 
-  --ink: #000000;
-  --canvas-dark: #000000;
-  --surface-dark-elevated: #121314;
-  --surface-dark-card: #181818;
+  --warning: #db2828;
+  --warning-tint: rgba(219, 40, 40, 0.08);
+
+  --ink: rgba(0, 0, 0, 0.87);
+  --canvas-dark: #1b1c1d;
+  --surface-dark-elevated: #222426;
+  --surface-dark-card: #27292b;
 
   --canvas-light: #ffffff;
-  --surface-soft: #f3f3f3;
-  --surface-card: #f5f7fa;
-  --surface-filter: rgba(245, 247, 250, 0.55);
+  --surface-soft: #f0f2f5;
+  --surface-card: #ffffff;
+  --surface-filter: #ffffff;
 
-  --hairline-light: #e7e7e7;
+  --hairline-light: #d4d4d5;
   --hairline-dark: rgba(229, 229, 229, 0.2);
 
-  --body-light: rgba(0, 0, 0, 0.6);
-  --mute-light: #6b6b6b;
-  --ash-light: #cccccc;
+  --body-light: rgba(0, 0, 0, 0.68);
+  --mute-light: rgba(0, 0, 0, 0.58);
+  --ash-light: #bcbec0;
 
   --on-dark: #ffffff;
   --body-dark: rgba(255, 255, 255, 0.7);
   --on-dark-mute: #cccccc;
 
-  --font-display: "Arial Narrow", "Roboto Condensed", Arial, Helvetica, sans-serif;
-  --font-body: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Source Sans Pro", "Helvetica Neue", Arial, Helvetica, sans-serif;
+  --font-body: "Source Sans Pro", "Helvetica Neue", Arial, Helvetica, sans-serif;
 
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 16px;
-  --radius-full: 9999px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-full: 4px;
 }
 
 /* --- Reset & page backdrop ---------------------------------------------- */
@@ -56,17 +60,17 @@
 }
 
 html {
-  background: var(--canvas-light);
+  background: var(--surface-soft);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
   font-family: var(--font-body);
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.5;
   color: var(--ink);
-  background: var(--canvas-light);
+  background: var(--surface-soft);
 }
 
 img {
@@ -107,16 +111,19 @@ h1, h2, h3 {
 .app-shell {
   max-width: 1440px;
   margin: 0 auto;
+  background: var(--surface-soft);
 }
 
-/* --- Chapter 1: dark nav band -------------------------------------------- */
+/* --- Header --------------------------------------------------------------- */
 
 .site-header {
   display: flex;
   align-items: center;
   height: 56px;
   padding: 0 32px;
-  background: var(--canvas-dark);
+  background: var(--canvas-light);
+  border-bottom: 1px solid var(--hairline-light);
+  box-shadow: 0 1px 2px rgba(34, 36, 38, 0.08);
 }
 
 .brand {
@@ -124,18 +131,18 @@ h1, h2, h3 {
   align-items: center;
   gap: 12px;
   text-decoration: none;
-  color: var(--on-dark);
+  color: var(--ink);
 }
 
 .brand-mark {
   width: 24px;
   height: 27px;
-  filter: drop-shadow(0 0 6px rgba(0, 112, 209, 0.65));
-  animation: brand-pulse 2.4s ease-in-out infinite;
+  filter: none;
+  animation: none;
 }
 
 .brand-shield-blue {
-  fill: var(--blue);
+  fill: var(--link);
 }
 
 .brand-shield-red {
@@ -154,11 +161,6 @@ h1, h2, h3 {
   stroke-linejoin: round;
 }
 
-@keyframes brand-pulse {
-  0%, 100% { filter: drop-shadow(0 0 4px rgba(0, 112, 209, 0.45)); }
-  50% { filter: drop-shadow(0 0 9px rgba(0, 112, 209, 0.8)); }
-}
-
 .brand-name {
   font-family: var(--font-display);
   font-size: 18px;
@@ -170,7 +172,7 @@ h1, h2, h3 {
   font-weight: 700;
 }
 
-/* --- Chapter 2: soft-surface control band -------------------------------- */
+/* --- Search controls ------------------------------------------------------ */
 
 .control-strip {
   position: relative;
@@ -182,42 +184,12 @@ h1, h2, h3 {
   flex-wrap: wrap;
   padding: 40px 32px;
   background: var(--surface-soft);
+  border-bottom: 1px solid var(--hairline-light);
 }
 
-/* Ambient console-glow drifting behind the hero copy and CTA */
 .control-strip::before,
 .control-strip::after {
-  content: "";
-  position: absolute;
-  width: 480px;
-  height: 480px;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.control-strip::before {
-  top: -260px;
-  left: 8%;
-  background: radial-gradient(circle, rgba(0, 112, 209, 0.22), transparent 70%);
-  animation: glow-drift-a 14s ease-in-out infinite;
-}
-
-.control-strip::after {
-  top: -240px;
-  right: 4%;
-  background: radial-gradient(circle, rgba(124, 58, 237, 0.18), transparent 70%);
-  animation: glow-drift-b 18s ease-in-out infinite;
-}
-
-@keyframes glow-drift-a {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(30px, 40px) scale(1.15); }
-}
-
-@keyframes glow-drift-b {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(-40px, 30px) scale(1.1); }
+  display: none;
 }
 
 .control-strip-copy {
@@ -227,6 +199,7 @@ h1, h2, h3 {
 
 .control-strip-copy h1 {
   font-size: 35px;
+  font-weight: 400;
   color: var(--ink);
 }
 
@@ -249,7 +222,7 @@ h1, h2, h3 {
 .meta-label {
   font-family: var(--font-display);
   font-size: 17px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: 0.1px;
   color: var(--mute-light);
 }
@@ -257,116 +230,74 @@ h1, h2, h3 {
 .range-tabs {
   position: relative;
   display: flex;
-  gap: 4px;
-  padding: 5px;
+  gap: 0;
+  padding: 0;
   background: var(--surface-filter);
   border-radius: var(--radius-full);
+  border: 1px solid var(--hairline-light);
 }
 
-/* Bubble that slides + grows behind whichever tab is hovered */
+/* The old animated indicator stays in the DOM for compatibility with the
+   existing control logic, but this visual system uses a direct active fill. */
 .range-tab-indicator {
-  position: absolute;
-  top: 0;
-  left: 0;
-  background: var(--canvas-light);
-  border-radius: var(--radius-full);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
-  z-index: 0;
-  pointer-events: none;
-  transition:
-    transform 260ms cubic-bezier(0.34, 1.4, 0.64, 1),
-    width 260ms cubic-bezier(0.34, 1.4, 0.64, 1),
-    height 260ms cubic-bezier(0.34, 1.4, 0.64, 1);
+  display: none;
 }
 
 .range-tab {
   position: relative;
   z-index: 1;
-  padding: 11px 22px;
+  padding: 10px 18px;
   font-family: var(--font-display);
   font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.324px;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--body-light);
   border-radius: var(--radius-full);
   -webkit-tap-highlight-color: transparent;
-  transform-origin: center;
-  transition: color 120ms ease, transform 90ms ease;
+  border-left: 1px solid var(--hairline-light);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.range-tab:first-of-type {
+  border-left: 0;
 }
 
 .range-tab:hover:not(:disabled),
 .range-tab.active {
-  color: var(--ink);
+  color: var(--on-blue);
+  background: var(--blue);
 }
 
-/* Give the segmented control a tactile downstroke, then visibly confirm the
-   choice after the pointer/key is released. The JS class also replays when
-   the already-active range is clicked, so every intentional click registers. */
 .range-tab:active:not(:disabled) {
-  transform: scale(0.93);
+  background: var(--blue-pressed);
 }
 
 .range-tab.is-confirming:not(:active) {
-  animation: range-tab-confirm 360ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: none;
 }
 
 .range-tab-indicator.is-confirming {
-  animation: range-indicator-confirm 420ms ease-out;
+  animation: none;
 }
 
-@keyframes range-tab-confirm {
-  0% { transform: scale(0.93); }
-  55% { transform: scale(1.06); }
-  100% { transform: scale(1); }
-}
-
-@keyframes range-indicator-confirm {
-  0% {
-    box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.12),
-      0 0 0 0 rgba(0, 112, 209, 0.3);
-  }
-  45% {
-    box-shadow:
-      0 3px 10px rgba(0, 0, 0, 0.14),
-      0 0 0 5px rgba(0, 112, 209, 0.18);
-  }
-  100% {
-    box-shadow:
-      0 2px 8px rgba(0, 0, 0, 0.12),
-      0 0 0 10px rgba(0, 112, 209, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .range-tab,
-  .range-tab-indicator {
-    transition-duration: 0.01ms;
-  }
-
-  .range-tab.is-confirming,
-  .range-tab-indicator.is-confirming {
-    animation: none;
-  }
-}
-
-/* Primary action — the one PlayStation Blue pill outside the footer band */
+/* Compact actions use the same restrained chrome as the reference UI. */
 .data-button {
   height: 40px;
   padding: 0 18px;
   font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 700;
-  color: var(--blue);
-  border: 1px solid rgba(0, 112, 209, 0.35);
+  font-weight: 600;
+  color: var(--link);
+  border: 1px solid rgba(33, 133, 208, 0.5);
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--canvas-light);
   transition: background-color 120ms ease, border-color 120ms ease;
 }
 
 .data-button:hover {
-  border-color: var(--blue);
-  background: var(--canvas-light);
+  color: #ffffff;
+  border-color: var(--link);
+  background: var(--link);
 }
 
 .source-search-button {
@@ -374,10 +305,10 @@ h1, h2, h3 {
   padding: 0 20px;
   font-family: var(--font-display);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--blue);
   background: var(--canvas-light);
-  border: 2px solid var(--blue);
+  border: 1px solid var(--blue);
   border-radius: var(--radius-full);
   transition: color 120ms ease, background-color 120ms ease, transform 120ms ease;
 }
@@ -385,7 +316,7 @@ h1, h2, h3 {
 .source-search-button:hover {
   color: var(--on-blue);
   background: var(--blue);
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .refresh-button {
@@ -398,18 +329,18 @@ h1, h2, h3 {
   padding: 0 28px;
   font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.45px;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--on-blue);
   background: var(--blue);
   border-radius: var(--radius-full);
-  transition: background-color 120ms ease, transform 120ms ease;
-  animation: cta-breathe 2.6s ease-in-out infinite;
+  transition: background-color 120ms ease;
+  animation: none;
 }
 
 .refresh-button:hover:not([aria-disabled="true"]) {
   background: var(--blue-pressed);
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .refresh-button[aria-disabled="true"] {
@@ -436,7 +367,7 @@ body.is-loading .refresh-icon {
   to { rotate: 360deg; }
 }
 
-/* --- Chapter 3: white canvas body ----------------------------------------- */
+/* --- Planner and results -------------------------------------------------- */
 
 .layout {
   display: grid;
@@ -469,7 +400,7 @@ body.is-loading .refresh-icon {
   gap: 10px;
   padding: 16px 20px;
   background: var(--surface-card);
-  border: 2px solid transparent;
+  border: 1px solid var(--hairline-light);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: border-color 120ms ease, background-color 120ms ease;
@@ -482,7 +413,7 @@ body.is-loading .refresh-icon {
 }
 
 .planner-hint.searches-ready {
-  color: var(--blue-active);
+  color: #16813e;
   font-weight: 600;
 }
 
@@ -509,6 +440,7 @@ body.is-loading .refresh-icon {
   gap: 6px;
   padding: 14px 20px 16px;
   background: var(--surface-card);
+  border: 1px solid var(--hairline-light);
   border-radius: var(--radius-md);
 }
 
@@ -543,16 +475,16 @@ body.is-loading .refresh-icon {
   padding: 8px 16px;
   font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.324px;
-  color: var(--blue);
-  border: 1px solid var(--blue);
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--link);
+  border: 1px solid rgba(33, 133, 208, 0.5);
   border-radius: var(--radius-full);
   transition: background-color 120ms ease;
 }
 
 .planner-action-button:hover {
-  background: rgba(0, 112, 209, 0.08);
+  background: rgba(33, 133, 208, 0.08);
 }
 
 .planner-action-button.exclude {
@@ -574,7 +506,8 @@ body.is-loading .refresh-icon {
 }
 
 .deck-slot:hover {
-  background: var(--surface-soft);
+  border-color: #aeb0b3;
+  background: var(--canvas-light);
 }
 
 .deck-slot-header {
@@ -586,7 +519,7 @@ body.is-loading .refresh-icon {
 
 .deck-slot.active {
   border-color: var(--blue);
-  background: var(--canvas-light);
+  box-shadow: 0 0 0 1px var(--blue);
 }
 
 .deck-slot.active .deck-slot-header {
@@ -658,7 +591,7 @@ body.is-loading .refresh-icon {
 }
 
 .selected-card-tile.include {
-  border-color: var(--blue);
+  border-color: var(--link);
 }
 
 .selected-card-tile.exclude-global,
@@ -686,8 +619,9 @@ body.modal-open {
   width: min(780px, 100%);
   max-height: min(86vh, 900px);
   background: var(--canvas-light);
+  border: 1px solid var(--hairline-light);
   border-radius: var(--radius-lg);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 8px 24px rgba(34, 36, 38, 0.2);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -737,8 +671,8 @@ body.modal-open {
   padding: 0 28px;
   font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.45px;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--on-blue);
   background: var(--blue);
   border-radius: var(--radius-full);
@@ -764,7 +698,7 @@ body.modal-open {
   font-family: var(--font-display);
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--blue);
 }
@@ -792,6 +726,7 @@ body.modal-open {
   padding: 18px;
   border-radius: var(--radius-md);
   background: var(--surface-soft);
+  border: 1px solid var(--hairline-light);
 }
 
 .bookmarklet-install span {
@@ -805,7 +740,7 @@ body.modal-open {
   min-height: 42px;
   padding: 0 20px;
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   color: var(--on-blue);
   background: var(--blue);
@@ -820,7 +755,7 @@ body.modal-open {
   min-height: 24px;
   margin: 0;
   font-weight: 600;
-  color: var(--blue-active);
+  color: #16813e;
 }
 
 .data-import-message.error {
@@ -860,8 +795,8 @@ body.modal-open {
   font-family: var(--font-display);
   font-size: 11px;
   font-weight: 700;
-  color: var(--blue-active);
-  background: rgba(0, 112, 209, 0.1);
+  color: var(--link-pressed);
+  background: rgba(33, 133, 208, 0.1);
   border-radius: var(--radius-full);
 }
 
@@ -878,7 +813,7 @@ body.modal-open {
 }
 
 .search-state.ready {
-  color: var(--blue-active);
+  color: #16813e;
   font-weight: 600;
 }
 
@@ -892,23 +827,24 @@ body.modal-open {
   padding: 8px 14px;
   font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 700;
-  color: var(--blue);
-  border: 1px solid rgba(0, 112, 209, 0.35);
+  font-weight: 600;
+  color: var(--link);
+  border: 1px solid rgba(33, 133, 208, 0.5);
   border-radius: var(--radius-full);
 }
 
 .search-open-button:hover {
-  border-color: var(--blue);
-  background: rgba(0, 112, 209, 0.08);
+  color: #ffffff;
+  border-color: var(--link);
+  background: var(--link);
 }
 
 .clear-deck-button {
   padding: 8px 16px;
   font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.324px;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--warning);
   border: 1px solid var(--warning);
   border-radius: var(--radius-full);
@@ -922,18 +858,19 @@ body.modal-open {
 .picker-mode-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 4px;
+  gap: 0;
+  padding: 0;
   background: var(--surface-filter);
   border-radius: var(--radius-full);
+  border: 1px solid var(--hairline-light);
 }
 
 .picker-mode-tab {
   padding: 8px 0;
   font-family: var(--font-display);
   font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.324px;
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--body-light);
   border-radius: var(--radius-full);
   transition: background-color 120ms ease, color 120ms ease;
@@ -946,6 +883,10 @@ body.modal-open {
 .picker-mode-tab.active {
   background: var(--blue);
   color: var(--on-blue);
+}
+
+.picker-mode-tab + .picker-mode-tab {
+  border-left: 1px solid var(--hairline-light);
 }
 
 /* Exclude mode paints the switch warning-red so the mode is unmistakable */
@@ -1004,8 +945,8 @@ body.modal-open {
 }
 
 .picker-card.included {
-  border-color: var(--blue);
-  outline: 1px solid var(--blue);
+  border-color: var(--link);
+  outline: 1px solid var(--link);
   outline-offset: -1px;
 }
 
@@ -1046,7 +987,7 @@ body.modal-open {
   font-weight: 700;
   line-height: 1;
   color: var(--on-blue);
-  background: var(--blue);
+  background: var(--link);
   border-radius: var(--radius-full);
 }
 
@@ -1155,7 +1096,8 @@ body.results-stale .results-meta p {
 .results-list:empty {
   padding: 64px 24px;
   text-align: center;
-  background: var(--surface-soft);
+  background: var(--surface-card);
+  border: 1px solid var(--hairline-light);
   border-radius: var(--radius-md);
 }
 
@@ -1183,12 +1125,14 @@ body.results-stale .results-meta p {
 /* One war-deck bundle (collapsible) */
 .war-card {
   background: var(--surface-card);
+  border: 1px solid var(--hairline-light);
   border-radius: var(--radius-md);
-  transition: box-shadow 120ms ease;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .war-card[open] {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+  border-color: #b9bbbd;
+  box-shadow: 0 1px 2px rgba(34, 36, 38, 0.12);
 }
 
 .war-card-summary {
@@ -1207,7 +1151,7 @@ body.results-stale .results-meta p {
 }
 
 .war-card-summary:hover {
-  background: var(--surface-soft);
+  background: #f8f9fa;
   border-radius: var(--radius-md);
 }
 
@@ -1224,10 +1168,7 @@ body.results-stale .results-meta p {
   font-size: 20px;
   font-weight: 700;
   line-height: 1;
-  background: linear-gradient(135deg, var(--blue), #7c3aed);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--blue);
 }
 
 /* The four decks' win conditions, e.g. "Golem · P.E.K.K.A · Hog Rider · Miner" */
@@ -1269,17 +1210,19 @@ body.results-stale .results-meta p {
   --family-color: var(--blue);
   background: var(--canvas-light);
   border-radius: var(--radius-md);
-  border-left: 3px solid var(--family-color);
-  padding: 16px 16px 16px 13px;
+  border: 1px solid var(--hairline-light);
+  border-top: 3px solid var(--family-color);
+  padding: 14px 16px 16px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  transition: transform 160ms ease, box-shadow 160ms ease;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .deck-panel:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px -6px color-mix(in srgb, var(--family-color) 45%, transparent);
+  transform: none;
+  border-color: color-mix(in srgb, var(--family-color) 55%, var(--hairline-light));
+  box-shadow: 0 1px 3px rgba(34, 36, 38, 0.12);
 }
 
 .deck-panel-header {
@@ -1329,12 +1272,14 @@ body.results-stale .results-meta p {
   object-fit: cover;
   border-radius: var(--radius-sm);
   background: var(--surface-soft);
-  transition: transform 140ms ease, box-shadow 140ms ease;
+  border: 1px solid rgba(34, 36, 38, 0.16);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .result-card-tile:hover .result-card-art {
-  transform: scale(1.06);
-  box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--family-color) 55%, transparent);
+  transform: none;
+  border-color: var(--family-color);
+  box-shadow: 0 1px 3px rgba(34, 36, 38, 0.18);
 }
 
 .deck-stats-row {
@@ -1352,7 +1297,7 @@ body.results-stale .results-meta p {
 }
 
 .deck-stat.winrate {
-  color: var(--blue);
+  color: #16813e;
 }
 
 /* --- Load more / empty / loading states ----------------------------------- */
@@ -1406,7 +1351,8 @@ body.results-stale .results-meta p {
   gap: 6px;
   text-align: center;
   padding: 56px 20px;
-  background: var(--surface-soft);
+  background: var(--surface-card);
+  border: 1px solid var(--hairline-light);
   border-radius: var(--radius-md);
 }
 
@@ -1479,11 +1425,12 @@ body.results-stale .results-meta p {
   to { background-position: -200% 0; }
 }
 
-/* --- Chapter 4: PlayStation Blue footer band ------------------------------ */
+/* --- Footer --------------------------------------------------------------- */
 
 .site-footer {
   padding: 48px 32px;
-  background: var(--blue);
+  background: var(--canvas-dark);
+  border-top: 4px solid var(--blue);
 }
 
 .site-footer p {
