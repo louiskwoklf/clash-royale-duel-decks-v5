@@ -93,7 +93,12 @@ test("Sites worker serves the finished page with absolute social metadata", asyn
   assert.match(response.headers.get("content-type"), /^text\/html/u);
   const html = await response.text();
   assert.match(html, /<title>War Deck Finder<\/title>/u);
-  assert.match(html, /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml" \/>/u);
+  assert.match(html, /rel="icon"[\s\S]+href="data:image\/svg\+xml,%3Csvg/u);
+  assert.doesNotMatch(html, /rel="icon" href="\/favicon\.svg"/u);
+  const iconData = html.match(/href="data:image\/svg\+xml,([^"]+)"/u);
+  assert.ok(iconData);
+  const iconSource = await fs.readFile(path.join(ROOT, "public/favicon.svg"), "utf8");
+  assert.equal(decodeURIComponent(iconData[1]), iconSource.replace(/\s+/gu, " ").trim());
   assert.match(html, /class="brand-name">War Deck Finder<\/span>/u);
   assert.match(
     html,
