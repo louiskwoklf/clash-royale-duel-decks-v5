@@ -939,35 +939,6 @@ function bundleWinConditions(warDeck) {
     .join(" · ");
 }
 
-function cardDisplayGroup(cardKey) {
-  const card = state.cardLookup.get(cardKey);
-  if (card?.kind === "evolution" || /-ev\d+$/u.test(cardKey)) return "evolution";
-  if (card?.kind === "hero" || card?.rarity === "Champion" || /-hero$/u.test(cardKey)) {
-    return "hero";
-  }
-  return "normal";
-}
-
-// Display order inside a deck: evolution first, hero/champion second, any
-// remaining evolutions or heroes next, then the regular cards.
-// Names come from the card catalog: the scraped cardNames array is not
-// aligned with the cards array, so pairing by index mislabels cards.
-function orderDeckCards(cardKeys) {
-  const entries = cardKeys.map((key) => ({
-    key,
-    name: cardNameForKey(key),
-  }));
-  const evolutions = entries.filter((entry) => cardDisplayGroup(entry.key) === "evolution");
-  const heroes = entries.filter((entry) => cardDisplayGroup(entry.key) === "hero");
-  const normal = entries.filter((entry) => cardDisplayGroup(entry.key) === "normal");
-
-  const ordered = [];
-  if (evolutions.length > 0) ordered.push(evolutions.shift());
-  if (heroes.length > 0) ordered.push(heroes.shift());
-  ordered.push(...evolutions, ...heroes, ...normal);
-  return ordered;
-}
-
 function createDeckPanel(deck, rank) {
   const panel = makeElement("section", "deck-panel");
   panel.style.setProperty("--family-color", deckFamilyColor(deck));
@@ -981,10 +952,10 @@ function createDeckPanel(deck, rank) {
   const cards = makeElement("div", "result-card-grid");
   const cardKeys = deck?.cards?.length === 8 ? deck.cards : deck?.baseCards ?? [];
 
-  orderDeckCards(cardKeys).forEach((entry) => {
+  cardKeys.forEach((cardKey) => {
     const figure = makeElement("figure", "result-card-tile");
-    figure.title = entry.name;
-    figure.append(createCardImage(entry.key, "result-card-art"));
+    figure.title = cardNameForKey(cardKey);
+    figure.append(createCardImage(cardKey, "result-card-art"));
     cards.append(figure);
   });
   panel.append(cards);

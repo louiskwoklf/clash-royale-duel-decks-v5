@@ -126,6 +126,7 @@ test("client returns bookmarklet data to its opener without persistent storage",
   assert.match(app, /days: 7,/u);
   assert.match(app, /second: "2-digit"/u);
   assert.match(app, /rating: ratingMatch \? Number\.parseFloat\(ratingMatch\[1\]\) : null/u);
+  assert.doesNotMatch(app, /function orderDeckCards/u);
   assert.doesNotMatch(app, /bundles found · 4 candidate pools/u);
   assert.doesNotMatch(html, /id="clear-deck-button"/u);
   assert.match(html, /Install the bookmarklet once/u);
@@ -144,6 +145,7 @@ test("four submitted candidate pools stay independent when filters are identical
   const result = await response.json();
   assert.equal(result.poolCount, 4);
   assert.equal(result.candidateDecks.length, 4);
+  assert.deepEqual(result.candidateDecks[0].cards, CANDIDATE_CARDS[0]);
   assert.equal(result.warDecks.length, 1);
 });
 
