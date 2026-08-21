@@ -6,7 +6,7 @@ RoyaleAPI searches.
 ## Safari workflow
 
 1. Open **Safari setup**, remove any older Finder bookmarklet, and drag
-   **Send search to Finder** into Safari's Favorites Bar.
+   **⚡ Send search to Finder** into Safari's Favorites Bar.
 2. Choose the meta window and configure the include/exclude cards for all four deck slots.
 3. Click **Open all RoyaleAPI searches**. The Finder opens one page for every unique search,
    so identical deck filters share a single page.

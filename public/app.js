@@ -231,7 +231,7 @@ function collectRoyaleApiDecks(targetOrigin) {
 }
 
 function createBookmarklet() {
-  return `javascript:(${collectRoyaleApiDecks.toString()})(${JSON.stringify(window.location.origin)})`;
+  return `javascript:/*war-deck-finder-bookmarklet-v3*/(${collectRoyaleApiDecks.toString()})(${JSON.stringify(window.location.origin)})`;
 }
 
 function formatImportedAt(value) {

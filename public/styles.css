@@ -764,7 +764,6 @@ body.modal-open {
 .bookmarklet-link {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
   min-height: 42px;
   padding: 0 20px;
   font-family: var(--font-display);
@@ -773,13 +772,6 @@ body.modal-open {
   color: var(--on-blue);
   background: var(--blue);
   border-radius: var(--radius-full);
-}
-
-.bookmarklet-icon {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 20px;
-  border-radius: 5px;
 }
 
 .bookmarklet-link:hover {
