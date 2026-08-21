@@ -219,72 +219,8 @@ h1, h2, h3 {
   align-items: center;
   gap: 20px;
   flex-wrap: wrap;
-}
-
-.control-strip-workflow {
-  position: relative;
-  z-index: 1;
-  flex: 1 1 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
-}
-
-.control-strip-workflow .control-strip-actions {
-  justify-content: flex-start;
-}
-
-.source-search-status {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  width: 100%;
-  flex-wrap: wrap;
-}
-
-.search-readiness {
-  flex: 0 1 280px;
-  margin: 0;
-  text-align: left;
-  font-size: 13px;
-  color: var(--mute-light);
-}
-
-.search-readiness.searches-ready {
-  color: #16813e;
-  font-weight: 600;
-}
-
-.search-readiness.searches-missing {
-  color: var(--warning);
-  font-weight: 600;
-}
-
-.deck-search-actions {
-  display: flex;
-  justify-content: flex-start;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.deck-search-button {
-  min-height: 34px;
-  padding: 0 12px;
-  font-family: var(--font-display);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--body-light);
-  background: var(--canvas-light);
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-full);
-  transition: color 120ms ease, background-color 120ms ease;
-}
-
-.deck-search-button:hover {
-  color: var(--ink);
-  background: var(--control-hover);
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 .meta-label {
@@ -391,7 +327,7 @@ h1, h2, h3 {
   transform: none;
 }
 
-.refresh-button {
+.find-decks-button {
   position: relative;
   z-index: 1;
   display: inline-flex;
@@ -410,27 +346,22 @@ h1, h2, h3 {
   animation: none;
 }
 
-.refresh-button:hover:not([aria-disabled="true"]) {
+.find-decks-button:hover:not([aria-disabled="true"]) {
   background: var(--blue-pressed);
   transform: none;
 }
 
-.refresh-button[aria-disabled="true"] {
+.find-decks-button[aria-disabled="true"] {
   opacity: 0.6;
   cursor: default;
 }
 
-@keyframes cta-breathe {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 112, 209, 0.45); }
-  50% { box-shadow: 0 0 0 10px rgba(0, 112, 209, 0); }
-}
-
-.refresh-icon {
+.find-decks-icon {
   font-size: 16px;
   line-height: 1;
 }
 
-body.is-loading .refresh-icon {
+body.is-loading .find-decks-icon {
   display: inline-block;
   animation: spin 900ms linear infinite;
 }
@@ -569,10 +500,64 @@ body.is-loading .refresh-icon {
 }
 
 .deck-slot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 500;
   color: var(--mute-light);
+}
+
+.deck-slot-title {
+  font-weight: 600;
+}
+
+.deck-data-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.deck-data-status {
+  overflow: hidden;
+  max-width: 230px;
+  color: var(--mute-light);
+  font-size: 11px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deck-data-status.ready {
+  color: #16813e;
+}
+
+.deck-data-status.pending {
+  color: var(--mute-light);
+}
+
+.deck-data-button {
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 0 10px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--body-light);
+  background: var(--canvas-light);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-full);
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.deck-data-button:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--control-hover);
 }
 
 .deck-slot.active {
@@ -580,7 +565,7 @@ body.is-loading .refresh-icon {
   box-shadow: 0 0 0 1px var(--blue);
 }
 
-.deck-slot.active .deck-slot-header {
+.deck-slot.active .deck-slot-title {
   color: var(--blue);
 }
 
@@ -814,10 +799,6 @@ body.modal-open {
   margin: 0;
   font-weight: 600;
   color: #16813e;
-}
-
-.data-import-message.error {
-  color: var(--warning);
 }
 
 .clear-deck-button {
@@ -1471,25 +1452,6 @@ body.results-stale .results-meta p {
     gap: 12px;
   }
 
-  .control-strip-workflow {
-    flex-basis: 100%;
-    align-items: stretch;
-  }
-
-  .source-search-status {
-    align-items: flex-start;
-    justify-content: flex-start;
-  }
-
-  .search-readiness {
-    flex-basis: 100%;
-    text-align: left;
-  }
-
-  .deck-search-actions {
-    justify-content: flex-start;
-  }
-
   .data-button {
     order: 3;
   }
@@ -1498,7 +1460,7 @@ body.results-stale .results-meta p {
     order: 4;
   }
 
-  .refresh-button {
+  .find-decks-button {
     order: 5;
   }
 

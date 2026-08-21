@@ -21,28 +21,8 @@ async function loadWorker() {
   return (await import(url.href)).default;
 }
 
-function createMemoryBucket() {
-  const objects = new Map();
-  return {
-    async get(key) {
-      const stored = objects.get(key);
-      if (!stored) return null;
-      return {
-        customMetadata: stored.customMetadata,
-        async json() {
-          return JSON.parse(stored.body);
-        },
-      };
-    },
-    async put(key, body, options = {}) {
-      objects.set(key, { body, customMetadata: options.customMetadata });
-    },
-  };
-}
-
 function createEnv() {
   return {
-    DECK_DATA: createMemoryBucket(),
     ASSETS: {
       async fetch(request) {
         const url = new URL(request.url);
@@ -83,13 +63,15 @@ function importPayload({ include = [], exclude = [], deckIndexes = [0, 1, 2, 3],
   };
 }
 
-async function importSearch(worker, env, payload, { authenticated = true } = {}) {
-  const headers = { "Content-Type": "application/json" };
-  if (authenticated) headers["oai-authenticated-user-id"] = "owner-1";
+function deckFilters(includes = [[], [], [], []], excludes = [[], [], [], []]) {
+  return includes.map((include, index) => ({ include, exclude: excludes[index] ?? [] }));
+}
+
+async function findWarDecks(worker, env, payload) {
   return worker.fetch(
-    new Request("https://war-decks.example/api/import-decks", {
+    new Request("https://war-decks.example/api/war-decks", {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     }),
     env,
@@ -105,7 +87,8 @@ test("Sites worker serves the finished page with absolute social metadata", asyn
   const html = await response.text();
   assert.match(html, /<title>War Deck Finder<\/title>/u);
   assert.match(html, /Open all RoyaleAPI searches/u);
-  assert.match(html, /id="deck-search-actions"/u);
+  assert.match(html, /id="find-decks-button"/u);
+  assert.doesNotMatch(html, /id="deck-search-actions"/u);
   assert.doesNotMatch(html, /id="search-list"/u);
   assert.match(html, /https:\/\/war-decks\.example\/og\.png/u);
   assert.doesNotMatch(html, /__SOCIAL_IMAGE_METADATA__/u);
@@ -122,115 +105,102 @@ test("Sites worker exposes the card catalog without a network call", async () =>
   assert.ok(data.cards.some((card) => card.key === "hog-rider"));
 });
 
-test("identical deck filters share one stored candidate search", async () => {
+test("client returns bookmarklet data to its opener without persistent storage", async () => {
+  const app = await fs.readFile(path.join(ROOT, "dist/client/app.js"), "utf8");
+  assert.match(app, /const finderWindow = window\.opener;/u);
+  assert.match(app, /finderWindow\.postMessage\(/u);
+  assert.match(app, /window\.close\(\);/u);
+  assert.match(app, /deckImports: Array\(4\)\.fill\(null\)/u);
+  assert.doesNotMatch(app, /BroadcastChannel|localStorage|sessionStorage|#import=|\/api\/import-decks|\/api\/deck-searches/u);
+});
+
+test("four submitted candidate pools stay independent when filters are identical", async () => {
   const worker = await loadWorker();
   const env = createEnv();
-  const imported = await importSearch(worker, env, importPayload());
-  assert.equal(imported.status, 201);
-  assert.equal((await imported.json()).search.deckCount, 4);
-
-  const statusResponse = await worker.fetch(
-    new Request("https://war-decks.example/api/deck-searches?time=1"),
-    env,
-  );
-  const statuses = await statusResponse.json();
-  assert.equal(statuses.searches.length, 1);
-  assert.deepEqual(statuses.searches[0].deckSlots, [1, 2, 3, 4]);
-  assert.equal(statuses.searches[0].available, true);
-
-  const resultResponse = await worker.fetch(
-    new Request("https://war-decks.example/api/war-decks?time=1"),
-    env,
-  );
-  assert.equal(resultResponse.status, 200);
-  const result = await resultResponse.json();
-  assert.equal(result.searches.length, 1);
+  const response = await findWarDecks(worker, env, {
+    days: 1,
+    deckFilters: deckFilters(),
+    imports: CANDIDATE_CARDS.map((_, index) => importPayload({ deckIndexes: [index] })),
+  });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.poolCount, 4);
   assert.equal(result.candidateDecks.length, 4);
   assert.equal(result.warDecks.length, 1);
 });
 
-test("four exact RoyaleAPI searches become four combinatorics pools", async () => {
+test("four exact in-memory searches become four combinatorics pools", async () => {
   const worker = await loadWorker();
   const env = createEnv();
   const filters = ["hog-rider", "royal-giant", "graveyard", "pekka"];
-
-  for (let index = 0; index < filters.length; index += 1) {
-    const response = await importSearch(
-      worker,
-      env,
-      importPayload({ include: [filters[index]], deckIndexes: [index] }),
-    );
-    assert.equal(response.status, 201);
-  }
-
-  const query = new URLSearchParams({ time: "1" });
-  filters.forEach((card, index) => query.append(`d${index + 1}inc`, card));
-
-  const statusResponse = await worker.fetch(
-    new Request(`https://war-decks.example/api/deck-searches?${query}`),
-    env,
-  );
-  const status = await statusResponse.json();
-  assert.equal(status.searches.length, 4);
-  assert.ok(status.searches.every((search) => search.available));
-
-  const resultResponse = await worker.fetch(
-    new Request(`https://war-decks.example/api/war-decks?${query}`),
-    env,
-  );
-  assert.equal(resultResponse.status, 200);
-  const result = await resultResponse.json();
-  assert.equal(result.searches.length, 4);
+  const response = await findWarDecks(worker, env, {
+    days: 1,
+    deckFilters: deckFilters(filters.map((card) => [card])),
+    imports: filters.map((card, index) =>
+      importPayload({ include: [card], deckIndexes: [index] }),
+    ),
+  });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.poolCount, 4);
   assert.equal(result.candidateDecks.length, 4);
   assert.equal(result.warDecks.length, 1);
   assert.deepEqual(result.warDecks[0].candidateIndexes, [0, 1, 2, 3]);
 });
 
-test("missing exact searches prevent combinatorics and identify the missing slots", async () => {
+test("missing in-memory pools prevent combinatorics and identify the decks", async () => {
   const worker = await loadWorker();
   const env = createEnv();
-  await importSearch(worker, env, importPayload({ include: ["hog-rider"], deckIndexes: [0] }));
-
-  const response = await worker.fetch(
-    new Request(
-      "https://war-decks.example/api/war-decks?time=1&" +
-        "d1inc=hog-rider&d2inc=royal-giant&d3inc=graveyard&d4inc=pekka",
-    ),
-    env,
-  );
-  assert.equal(response.status, 404);
+  const response = await findWarDecks(worker, env, {
+    days: 1,
+    deckFilters: deckFilters(),
+    imports: [importPayload({ deckIndexes: [0] }), null, null, null],
+  });
+  assert.equal(response.status, 400);
   const data = await response.json();
-  assert.equal(data.missingSearches.length, 3);
-  assert.deepEqual(data.missingSearches.map((search) => search.deckSlots), [[2], [3], [4]]);
+  assert.deepEqual(data.missingDecks, [2, 3, 4]);
 });
 
-test("bookmarklet imports must match the exact RoyaleAPI filters", async () => {
+test("submitted candidate pools must match each deck's exact filters", async () => {
   const worker = await loadWorker();
   const env = createEnv();
-  const response = await importSearch(
-    worker,
-    env,
-    importPayload({ include: ["pekka"], deckIndexes: [0] }),
-  );
+  const response = await findWarDecks(worker, env, {
+    days: 1,
+    deckFilters: deckFilters([["pekka"], [], [], []]),
+    imports: CANDIDATE_CARDS.map((_, index) =>
+      importPayload({ include: index === 0 ? ["hog-rider"] : [], deckIndexes: [index] }),
+    ),
+  });
   assert.equal(response.status, 400);
   assert.match((await response.json()).message, /does not match/u);
 });
 
-test("an exact search may validly return zero candidates", async () => {
+test("an in-memory pool may validly contain zero candidates", async () => {
   const worker = await loadWorker();
   const env = createEnv();
-  const response = await importSearch(
-    worker,
-    env,
-    importPayload({ include: ["hog-rider"], deckIndexes: [] }),
-  );
-  assert.equal(response.status, 201);
-  assert.equal((await response.json()).search.deckCount, 0);
+  const response = await findWarDecks(worker, env, {
+    days: 1,
+    deckFilters: deckFilters(),
+    imports: CANDIDATE_CARDS.map((_, index) =>
+      importPayload({ deckIndexes: index === 0 ? [] : [index] }),
+    ),
+  });
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.warDecks.length, 0);
 });
 
-test("Sites worker rejects bookmarklet imports without an authenticated owner", async () => {
+test("legacy persistence endpoints are no longer available", async () => {
   const worker = await loadWorker();
   const env = createEnv();
-  const response = await importSearch(worker, env, importPayload(), { authenticated: false });
-  assert.equal(response.status, 403);
+  const importResponse = await worker.fetch(
+    new Request("https://war-decks.example/api/import-decks", { method: "POST" }),
+    env,
+  );
+  assert.equal(importResponse.status, 405);
+  const statusResponse = await worker.fetch(
+    new Request("https://war-decks.example/api/deck-searches"),
+    env,
+  );
+  assert.equal(statusResponse.status, 404);
 });

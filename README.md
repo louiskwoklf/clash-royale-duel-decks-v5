@@ -10,12 +10,15 @@ RoyaleAPI searches.
 2. Choose the meta window and configure the include/exclude cards for all four deck slots.
 3. Click **Open all RoyaleAPI searches**. The Finder opens one page for every unique search,
    so identical deck filters share a single page.
-4. Wait for each RoyaleAPI result page to load, then click the saved favorite in every tab.
-5. Return to the original Finder tab and click **Find decks**.
+4. Wait for each RoyaleAPI result page to load, then click the saved favorite. Each page
+   returns its candidates to the original Finder tab and closes automatically.
+5. In the original Finder tab, click **Find decks**.
 
-Each import is validated and stored against its exact meta window, include cards, and
-exclude cards. The Finder then evaluates the Cartesian product of the four candidate
-pools and keeps only bundles whose 32 normalized cards are all unique.
+Each deck also has its own **Import data** or **Update data** button. Those buttons update
+only that deck, while **Open all RoyaleAPI searches** updates every deck covered by each
+opened search. Candidate pools live only in the original Finder tab and are cleared by a
+page refresh or closing the tab. The worker validates the four submitted pools, evaluates
+their Cartesian product, and keeps only bundles whose 32 normalized cards are all unique.
 
 ## Monthly card update
 

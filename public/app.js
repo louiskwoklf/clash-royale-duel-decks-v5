@@ -10,7 +10,6 @@ const elements = {
   dataCloseButton: document.querySelector("#data-close-button"),
   dataImportMessage: document.querySelector("#data-import-message"),
   dataModal: document.querySelector("#data-modal"),
-  deckSearchActions: document.querySelector("#deck-search-actions"),
   deckSlotGrid: document.querySelector("#deck-slot-grid"),
   filterModal: document.querySelector("#filter-modal"),
   filterCloseButton: document.querySelector("#filter-close-button"),
@@ -32,11 +31,10 @@ const elements = {
   pickerScopeNote: document.querySelector("#picker-scope-note"),
   rangeTabs: [...document.querySelectorAll(".range-tab")],
   rangeTabIndicator: document.querySelector(".range-tab-indicator"),
-  refreshButton: document.querySelector("#refresh-button"),
+  findDecksButton: document.querySelector("#find-decks-button"),
   resultsList: document.querySelector("#results-list"),
   resultsSummary: document.querySelector("#results-summary"),
   bookmarkletLink: document.querySelector("#bookmarklet-link"),
-  searchReadiness: document.querySelector("#search-readiness"),
   sourceSearchButton: document.querySelector("#source-search-button"),
 };
 
@@ -46,6 +44,7 @@ const state = {
   cards: [],
   controller: null,
   data: null,
+  deckImports: Array(4).fill(null),
   days: 1,
   deckFilters: Array.from({ length: 4 }, () => ({ include: [], exclude: [] })),
   globalExclude: [],
@@ -55,9 +54,7 @@ const state = {
   // toggles apply to all four decks. Include is always deck-scoped.
   pickerScope: "deck",
   page: 0,
-  isImportReturn: false,
-  searchStatuses: new Map(),
-  statusController: null,
+  pendingSearchTabs: new Map(),
 };
 
 function makeElement(tagName, className, text) {
@@ -109,17 +106,24 @@ function buildPopularDecksUrl(search) {
   return url.toString();
 }
 
+function searchForDeck(deckIndex) {
+  const filter = state.deckFilters[deckIndex];
+  const search = {
+    days: state.days,
+    include: [...new Set(filter.include)].sort(),
+    exclude: [...new Set([...state.globalExclude, ...filter.exclude])].sort(),
+  };
+  search.id = canonicalSearchId(search);
+  search.sourceUrl = buildPopularDecksUrl(search);
+  return search;
+}
+
 function uniqueDeckSearches() {
   const searches = new Map();
-  state.deckFilters.forEach((filter, index) => {
-    const search = {
-      days: state.days,
-      include: [...new Set(filter.include)].sort(),
-      exclude: [...new Set([...state.globalExclude, ...filter.exclude])].sort(),
-    };
-    search.id = canonicalSearchId(search);
+  state.deckFilters.forEach((_, index) => {
+    const search = searchForDeck(index);
     if (!searches.has(search.id)) {
-      searches.set(search.id, { ...search, deckSlots: [], sourceUrl: buildPopularDecksUrl(search) });
+      searches.set(search.id, { ...search, deckSlots: [] });
     }
     searches.get(search.id).deckSlots.push(index + 1);
   });
@@ -130,6 +134,11 @@ function uniqueDeckSearches() {
 // self-contained: it cannot refer to any variables or helpers from this file.
 function collectRoyaleApiDecks(targetOrigin) {
   try {
+    const finderWindow = window.opener;
+    if (!finderWindow || finderWindow.closed) {
+      throw new Error("Return to the Finder and open this search from there first.");
+    }
+
     const pageUrl = new URL(window.location.href);
     const hostname = pageUrl.hostname.replace(/^www\./u, "");
     if (hostname !== "royaleapi.com" || pageUrl.pathname !== "/decks/popular") {
@@ -160,19 +169,44 @@ function collectRoyaleApiDecks(targetOrigin) {
       })
       .filter((deck) => deck.statsUrl);
 
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener("message", receiveResult);
+      window.alert("War Deck Finder: The original Finder tab did not acknowledge this data.");
+    }, 8000);
+
+    function receiveResult(event) {
+      if (
+        event.origin !== targetOrigin ||
+        event.source !== finderWindow ||
+        event.data?.type !== "war-deck-finder:import-result" ||
+        event.data?.requestId !== requestId
+      ) {
+        return;
+      }
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", receiveResult);
+      if (!event.data.ok) {
+        window.alert(`War Deck Finder: ${event.data.message || "The import was rejected."}`);
+        return;
+      }
+      window.close();
+    }
+
+    window.addEventListener("message", receiveResult);
     pageUrl.hash = "";
-    const json = JSON.stringify({
-      timeRange,
-      sourceUrl: pageUrl.toString(),
-      decks,
-    });
-    const bytes = new TextEncoder().encode(json);
-    let binary = "";
-    bytes.forEach((byte) => {
-      binary += String.fromCharCode(byte);
-    });
-    const encoded = btoa(binary);
-    window.location.assign(`${targetOrigin}/#import=${encoded}`);
+    finderWindow.postMessage(
+      {
+        type: "war-deck-finder:import",
+        requestId,
+        payload: {
+          timeRange,
+          sourceUrl: pageUrl.toString(),
+          decks,
+        },
+      },
+      targetOrigin,
+    );
   } catch (error) {
     window.alert(`War Deck Finder: ${error.message}`);
   }
@@ -221,8 +255,6 @@ function resetSearchResults() {
 // Filters changed after a search: keep the results visible but flag them as
 // outdated instead of wiping the list.
 function markResultsStale() {
-  invalidateSearchStatus();
-  void loadSearchStatus();
   state.controller?.abort();
   state.controller = null;
   if (state.loading) setLoading(false);
@@ -236,13 +268,11 @@ function markResultsStale() {
   render();
 }
 
-function openDataModal(message = "", isError = false, refreshStatus = true) {
+function openDataModal() {
   elements.dataModal.classList.remove("hidden");
   document.body.classList.add("modal-open");
-  elements.dataImportMessage.textContent = message;
-  elements.dataImportMessage.classList.toggle("error", isError);
+  elements.dataImportMessage.textContent = "";
   elements.dataCloseButton.focus();
-  if (refreshStatus) void loadSearchStatus();
 }
 
 function closeDataModal() {
@@ -252,177 +282,132 @@ function closeDataModal() {
   }
 }
 
-function openSearchTab(search) {
-  const tab = window.open("about:blank", "_blank");
-  if (!tab) return false;
-  try {
-    tab.opener = null;
-    tab.location.replace(search.sourceUrl);
-    return true;
-  } catch {
-    tab.close();
-    return false;
-  }
-}
-
-function searchesByDeck(searches = uniqueDeckSearches()) {
-  const byDeck = Array(state.deckFilters.length);
-  searches.forEach((search) => {
-    search.deckSlots.forEach((deckNumber) => {
-      byDeck[deckNumber - 1] = search;
-    });
-  });
-  return byDeck;
-}
-
-function showSearchActionMessage(message, isError = false) {
-  elements.searchReadiness.textContent = message;
-  elements.searchReadiness.classList.remove("searches-ready");
-  elements.searchReadiness.classList.toggle("searches-missing", isError);
-}
-
-function createDeckSearchButton(search, deckIndex) {
-  const status = state.searchStatuses.get(search.id);
-  const action = status?.available ? "Refresh" : "Import";
-  const deckNumber = deckIndex + 1;
-  const button = makeElement("button", "deck-search-button", `${action} Deck ${deckNumber}`);
-  button.type = "button";
-  button.addEventListener("click", () => {
-    if (openSearchTab(search)) {
-      showSearchActionMessage(
-        `Deck ${deckNumber} opened — use the Safari favorite to ${action.toLowerCase()} it.`,
-      );
-    } else {
-      showSearchActionMessage(
-        `Safari blocked Deck ${deckNumber}. Allow pop-ups for this site, then try again.`,
-        true,
-      );
+function prunePendingSearchTabs() {
+  let changed = false;
+  state.pendingSearchTabs.forEach((pending, tab) => {
+    if (tab.closed) {
+      state.pendingSearchTabs.delete(tab);
+      changed = true;
     }
   });
-  return button;
+  if (changed) renderDeckSlots();
 }
 
-function renderDeckSearchActions(searches = uniqueDeckSearches()) {
-  elements.deckSearchActions.replaceChildren(
-    ...searchesByDeck(searches).map(createDeckSearchButton),
-  );
+function openSearchTab(search, deckIndexes) {
+  prunePendingSearchTabs();
+  const tab = window.open(search.sourceUrl, "_blank");
+  if (!tab) return false;
+  state.pendingSearchTabs.set(tab, { search, deckIndexes: [...deckIndexes] });
+  renderDeckSlots();
+  return true;
 }
 
-function renderSearchReadiness() {
-  const searches = uniqueDeckSearches();
-  const deckSearches = searchesByDeck(searches);
-  const readyDecks = deckSearches.filter(
-    (search) => state.searchStatuses.get(search.id)?.available,
-  );
-  const statusesKnown = searches.every((search) => state.searchStatuses.has(search.id));
-  elements.searchReadiness.classList.toggle(
-    "searches-ready",
-    statusesKnown && readyDecks.length === deckSearches.length,
-  );
-  elements.searchReadiness.classList.toggle(
-    "searches-missing",
-    statusesKnown && readyDecks.length < deckSearches.length,
-  );
-  if (!statusesKnown) {
-    elements.searchReadiness.textContent = "Checking saved deck data…";
-  } else if (readyDecks.length === deckSearches.length) {
-    const importedTimes = searches
-      .map((search) => Date.parse(state.searchStatuses.get(search.id)?.importedAt))
-      .filter(Number.isFinite);
-    const oldestImport = importedTimes.length > 0 ? Math.min(...importedTimes) : null;
-    elements.searchReadiness.textContent = oldestImport
-      ? `Data ready · ${formatImportedAt(oldestImport)}`
-      : "Data ready";
-  } else {
-    const missingDecks = deckSearches
-      .map((search, index) => (state.searchStatuses.get(search.id)?.available ? null : index + 1))
-      .filter(Boolean);
-    elements.searchReadiness.textContent = `${readyDecks.length} of ${deckSearches.length} decks ready · ${
-      missingDecks.length === 1 ? "Deck" : "Decks"
-    } ${missingDecks.join(" & ")} need importing`;
-  }
-  renderDeckSearchActions(searches);
-}
-
-function invalidateSearchStatus() {
-  state.statusController?.abort();
-  state.statusController = null;
-  state.searchStatuses = new Map();
-  renderSearchReadiness();
-}
-
-async function loadSearchStatus() {
-  state.statusController?.abort();
-  const controller = new AbortController();
-  state.statusController = controller;
-  try {
-    const query = new URLSearchParams({ time: String(state.days) });
-    appendDeckFilters(query);
-    const response = await fetch(`/api/deck-searches?${query}`, { signal: controller.signal });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message ?? "Search status is unavailable.");
-    state.searchStatuses = new Map(data.searches.map((search) => [search.id, search]));
-    renderSearchReadiness();
-  } catch (error) {
-    if (error.name === "AbortError") return;
-    showSearchActionMessage(error.message, true);
-  } finally {
-    if (state.statusController === controller) state.statusController = null;
+function openDeckSearch(deckIndex) {
+  if (!openSearchTab(searchForDeck(deckIndex), [deckIndex])) {
+    window.alert(`Safari blocked the Deck ${deckIndex + 1} search. Allow pop-ups, then try again.`);
   }
 }
 
 function openCurrentSearches() {
   const searches = uniqueDeckSearches();
-  const opened = searches.filter(openSearchTab).length;
+  const opened = searches.filter((search) =>
+    openSearchTab(search, search.deckSlots.map((deckNumber) => deckNumber - 1)),
+  ).length;
   if (opened < searches.length) {
-    showSearchActionMessage(
-      `Safari opened ${opened} of ${searches.length} searches. Use the deck buttons for any blocked pages.`,
-      true,
-    );
-  } else {
-    showSearchActionMessage(
-      `${opened} RoyaleAPI ${opened === 1 ? "page" : "pages"} opened — use the Safari favorite in each.`,
+    window.alert(
+      `Safari opened ${opened} of ${searches.length} searches. Allow pop-ups and retry the missing decks individually.`,
     );
   }
 }
 
-function decodeImportPayload(encoded) {
-  const binary = atob(encoded);
-  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-  return JSON.parse(new TextDecoder().decode(bytes));
+function isDeckSearchPending(deckIndex) {
+  return [...state.pendingSearchTabs.values()].some((pending) =>
+    pending.deckIndexes.includes(deckIndex),
+  );
 }
 
-async function importDecksFromHash() {
-  if (!window.location.hash.startsWith("#import=")) return;
+function clearDeckImports(deckIndexes) {
+  const affected = new Set(deckIndexes);
+  affected.forEach((deckIndex) => {
+    state.deckImports[deckIndex] = null;
+  });
+  state.pendingSearchTabs.forEach((pending, tab) => {
+    pending.deckIndexes = pending.deckIndexes.filter((deckIndex) => !affected.has(deckIndex));
+    if (pending.deckIndexes.length === 0) state.pendingSearchTabs.delete(tab);
+  });
+}
 
-  state.isImportReturn = true;
-  const encoded = window.location.hash.slice("#import=".length);
-  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
-  openDataModal("Importing this RoyaleAPI search…", false, false);
-
+function validateReturnedImport(payload, expectedSearch) {
+  if (!payload || typeof payload !== "object") {
+    throw new Error("RoyaleAPI returned invalid data.");
+  }
+  let sourceUrl;
   try {
-    const payload = decodeImportPayload(encoded);
-    const response = await fetch("/api/import-decks", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.message ?? "The deck import failed.");
+    sourceUrl = new URL(payload.sourceUrl);
+  } catch {
+    throw new Error("The returned data has no valid RoyaleAPI search URL.");
+  }
+  if (
+    sourceUrl.protocol !== "https:" ||
+    !["royaleapi.com", "www.royaleapi.com"].includes(sourceUrl.hostname) ||
+    sourceUrl.pathname !== "/decks/popular"
+  ) {
+    throw new Error("The returned data did not come from a RoyaleAPI search.");
+  }
+  const timeRange = sourceUrl.searchParams.get("time");
+  const days = Number.parseInt(String(timeRange).replace(/d$/u, ""), 10);
+  const returnedSearch = {
+    days,
+    include: [...new Set(sourceUrl.searchParams.getAll("inc"))].sort(),
+    exclude: [...new Set(sourceUrl.searchParams.getAll("exc"))].sort(),
+  };
+  returnedSearch.id = canonicalSearchId(returnedSearch);
+  if (payload.timeRange !== `${days}d` || returnedSearch.id !== expectedSearch.id) {
+    throw new Error("The returned data no longer matches this deck's filters.");
+  }
+  if (!Array.isArray(payload.decks) || payload.decks.length > 30) {
+    throw new Error("RoyaleAPI returned an invalid candidate list.");
+  }
+  return {
+    payload: {
+      timeRange: payload.timeRange,
+      sourceUrl: sourceUrl.toString(),
+      decks: payload.decks,
+    },
+    importedAt: new Date().toISOString(),
+  };
+}
 
-    const imported = data.search;
-    elements.dataImportMessage.textContent =
-      `${imported.deckCount} candidates imported. Return to the original Finder tab when this tab closes.`;
-    elements.dataImportMessage.classList.remove("error");
-    if ("BroadcastChannel" in window) {
-      const channel = new BroadcastChannel("war-deck-finder-imports");
-      channel.postMessage({ type: "search-imported", id: imported.id });
-      channel.close();
-    }
-    window.setTimeout(() => window.close(), 900);
+function sendImportResult(event, requestId, ok, message = "") {
+  event.source?.postMessage(
+    { type: "war-deck-finder:import-result", requestId, ok, message },
+    event.origin,
+  );
+}
+
+function receiveRoyaleApiImport(event) {
+  if (
+    !["https://royaleapi.com", "https://www.royaleapi.com"].includes(event.origin) ||
+    event.data?.type !== "war-deck-finder:import"
+  ) {
+    return;
+  }
+  const pending = state.pendingSearchTabs.get(event.source);
+  if (!pending) {
+    sendImportResult(event, event.data.requestId, false, "The Finder settings changed. Reopen this search.");
+    return;
+  }
+  try {
+    const imported = validateReturnedImport(event.data.payload, pending.search);
+    pending.deckIndexes.forEach((deckIndex) => {
+      state.deckImports[deckIndex] = imported;
+    });
+    state.pendingSearchTabs.delete(event.source);
+    renderDeckSlots();
+    markResultsStale();
+    sendImportResult(event, event.data.requestId, true);
   } catch (error) {
-    elements.dataImportMessage.textContent = error.message;
-    elements.dataImportMessage.classList.add("error");
+    sendImportResult(event, event.data.requestId, false, error.message);
   }
 }
 
@@ -521,13 +506,17 @@ function changeDeckFilter(deckIndex, mode, cardKey, action) {
       if (!filter.include.includes(cardKey)) {
         filter.include = [...filter.include, cardKey];
       }
-      state.globalExclude = state.globalExclude.filter((key) => key !== cardKey);
       filter.exclude = filter.exclude.filter((key) => key !== cardKey);
     } else {
       filter.include = filter.include.filter((key) => key !== cardKey);
     }
   }
 
+  clearDeckImports(
+    mode === "exclude-global"
+      ? state.deckFilters.map((_, index) => index)
+      : [deckIndex],
+  );
   renderDeckFilterPanel();
   markResultsStale();
 }
@@ -556,8 +545,10 @@ function clearActiveDeckFilter() {
   // the global list instead of a specific (and irrelevant) deck's filter.
   if (state.pickerScope === "global") {
     state.globalExclude = [];
+    clearDeckImports(state.deckFilters.map((_, index) => index));
   } else {
     state.deckFilters[state.activeDeckFilter] = { include: [], exclude: [] };
+    clearDeckImports([state.activeDeckFilter]);
   }
   renderDeckFilterPanel();
   markResultsStale();
@@ -566,6 +557,7 @@ function clearActiveDeckFilter() {
 function clearAllFilters() {
   state.deckFilters = Array.from({ length: 4 }, () => ({ include: [], exclude: [] }));
   state.globalExclude = [];
+  clearDeckImports(state.deckFilters.map((_, index) => index));
   renderDeckFilterPanel();
   markResultsStale();
 }
@@ -607,6 +599,7 @@ function createDeckSlot(deckIndex) {
   button.setAttribute("aria-pressed", String(isActive));
   button.addEventListener("click", () => openFilterModal(deckIndex));
   button.addEventListener("keydown", (event) => {
+    if (event.target !== button) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       openFilterModal(deckIndex);
@@ -614,7 +607,36 @@ function createDeckSlot(deckIndex) {
   });
 
   const header = makeElement("div", "deck-slot-header");
-  header.append(makeElement("span", "", `Deck ${deckIndex + 1}`));
+  const deckNumber = deckIndex + 1;
+  const imported = state.deckImports[deckIndex];
+  const pending = isDeckSearchPending(deckIndex);
+  const dataStatus = makeElement(
+    "span",
+    `deck-data-status ${pending ? "pending" : imported ? "ready" : "missing"}`,
+    pending
+      ? "Waiting for RoyaleAPI…"
+      : imported
+        ? `${imported.payload.decks.length} candidates · ${formatImportedAt(imported.importedAt)}`
+        : "No candidate data",
+  );
+  const dataButton = makeElement(
+    "button",
+    "deck-data-button",
+    pending ? "Waiting…" : imported ? "Update data" : "Import data",
+  );
+  dataButton.type = "button";
+  dataButton.disabled = pending;
+  dataButton.setAttribute(
+    "aria-label",
+    `${imported ? "Update" : "Import"} candidate data for Deck ${deckNumber}`,
+  );
+  dataButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openDeckSearch(deckIndex);
+  });
+  const dataControls = makeElement("div", "deck-data-controls");
+  dataControls.append(dataStatus, dataButton);
+  header.append(makeElement("span", "deck-slot-title", `Deck ${deckNumber}`), dataControls);
 
   const slotCards = makeElement("div", "deck-slot-cards");
   filter.include.forEach((cardKey) => {
@@ -749,7 +771,6 @@ function renderDeckFilterPanel() {
   renderDeckSlots();
   renderExcludeStrip();
   updatePickerSelectionState();
-  renderSearchReadiness();
 }
 
 function setLoading(loading) {
@@ -758,7 +779,7 @@ function setLoading(loading) {
   // Not a native `disabled`: a disabled button stops receiving ALL mouse
   // events (even mousedown), which would swallow the second click of the
   // double-click easter egg. loadWarDecks() already de-dupes via AbortController.
-  elements.refreshButton.setAttribute("aria-disabled", String(loading));
+  elements.findDecksButton.setAttribute("aria-disabled", String(loading));
   elements.rangeTabs.forEach((tab) => {
     tab.disabled = loading;
   });
@@ -1077,10 +1098,8 @@ function renderResults() {
     ...visible.map((warDeck, index) => createWarDeckCard(warDeck, start + index, index === 0)),
   );
 
-  const searchCount = state.data.searches?.length ?? 0;
-  const searchLabel = searchCount === 1 ? "search" : "searches";
   elements.resultsSummary.textContent =
-    `${formatNumber(results.length)} bundles found · ${searchCount} candidate ${searchLabel}`;
+    `${formatNumber(results.length)} bundles found · 4 candidate pools`;
 
   const isEmpty = results.length === 0;
   elements.emptyState.classList.toggle("hidden", !isEmpty);
@@ -1097,16 +1116,14 @@ function render() {
   renderResults();
 }
 
-function appendDeckFilters(query) {
-  state.deckFilters.forEach((filter, index) => {
-    const deckNumber = index + 1;
-    filter.include.forEach((cardKey) => query.append(`d${deckNumber}inc`, cardKey));
-    const excluded = new Set([...state.globalExclude, ...filter.exclude]);
-    excluded.forEach((cardKey) => query.append(`d${deckNumber}exc`, cardKey));
-  });
+function currentDeckFilters() {
+  return state.deckFilters.map((filter) => ({
+    include: [...filter.include],
+    exclude: [...new Set([...state.globalExclude, ...filter.exclude])],
+  }));
 }
 
-async function loadWarDecks({ refresh = false } = {}) {
+async function loadWarDecks() {
   state.controller?.abort();
   const controller = new AbortController();
   state.controller = controller;
@@ -1114,18 +1131,28 @@ async function loadWarDecks({ refresh = false } = {}) {
   setLoading(true);
 
   try {
-    const query = new URLSearchParams({ time: String(state.days) });
-    if (refresh) query.set("refresh", "true");
-    appendDeckFilters(query);
-    const response = await fetch(`/api/war-decks?${query}`, {
+    const missingDecks = state.deckImports
+      .map((imported, index) => (imported ? null : index + 1))
+      .filter(Boolean);
+    if (missingDecks.length > 0) {
+      throw new Error(
+        `Import candidate data for ${missingDecks.length === 1 ? "Deck" : "Decks"} ${missingDecks.join(" & ")} first.`,
+      );
+    }
+    const response = await fetch("/api/war-decks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        days: state.days,
+        deckFilters: currentDeckFilters(),
+        imports: state.deckImports.map((imported) => imported.payload),
+      }),
       signal: controller.signal,
     });
     const data = await response.json();
 
     if (!response.ok) {
-      const requestError = new Error(data.message ?? "The search could not be completed.");
-      requestError.status = response.status;
-      throw requestError;
+      throw new Error(data.message ?? "The search could not be completed.");
     }
 
     state.data = data;
@@ -1139,7 +1166,6 @@ async function loadWarDecks({ refresh = false } = {}) {
     elements.emptyTitle.textContent = "Search failed";
     elements.emptyMessage.textContent = error.message;
     elements.resultsSummary.textContent = "Search unavailable";
-    if (error.status === 404) openDataModal(error.message, true);
   } finally {
     if (state.controller === controller) {
       setLoading(false);
@@ -1166,15 +1192,9 @@ async function loadCards() {
 
 async function initialize() {
   elements.bookmarkletLink.href = createBookmarklet();
-  renderSearchReadiness();
 
   try {
     await loadCards();
-    if (window.location.hash.startsWith("#import=")) {
-      await importDecksFromHash();
-    } else {
-      await loadSearchStatus();
-    }
   } catch (error) {
     elements.emptyState.classList.remove("hidden");
     elements.emptyTitle.textContent = "Cards unavailable";
@@ -1218,6 +1238,8 @@ elements.rangeTabs.forEach((tab) => {
     confirmRangeClick(tab);
     if (days === state.days || state.loading) return;
     state.days = days;
+    clearDeckImports(state.deckFilters.map((_, index) => index));
+    renderDeckSlots();
     elements.rangeTabs.forEach((candidate) => {
       const active = candidate === tab;
       candidate.classList.toggle("active", active);
@@ -1237,7 +1259,7 @@ moveRangeIndicator(activeRangeTab());
 // Tracked manually (rather than relying on the native "dblclick" event)
 // since OS/trackpad double-click timing varies and can miss the native event.
 const DOUBLE_CLICK_WINDOW_MS = 450;
-let lastRefreshClickAt = 0;
+let lastFindDecksClickAt = 0;
 
 const funPopupCtx = elements.funPopupCanvas.getContext("2d", { willReadFrequently: true });
 elements.funPopupCanvas.width = 480;
@@ -1271,16 +1293,16 @@ function renderChromaFrame() {
   requestAnimationFrame(renderChromaFrame);
 }
 
-elements.refreshButton.addEventListener("click", () => {
+elements.findDecksButton.addEventListener("click", () => {
   const now = Date.now();
-  if (now - lastRefreshClickAt < DOUBLE_CLICK_WINDOW_MS) {
-    lastRefreshClickAt = 0;
+  if (now - lastFindDecksClickAt < DOUBLE_CLICK_WINDOW_MS) {
+    lastFindDecksClickAt = 0;
     elements.funPopup.classList.remove("hidden");
     elements.funPopupVideo.currentTime = 0;
     elements.funPopupVideo.muted = false;
     elements.funPopupVideo.play().then(() => requestAnimationFrame(renderChromaFrame)).catch(() => {});
   } else {
-    lastRefreshClickAt = now;
+    lastFindDecksClickAt = now;
   }
   loadWarDecks();
 });
@@ -1321,7 +1343,6 @@ elements.dataModal.addEventListener("click", (event) => {
 elements.bookmarkletLink.addEventListener("click", (event) => {
   event.preventDefault();
   elements.dataImportMessage.textContent = "Drag the button into Safari's Favorites Bar.";
-  elements.dataImportMessage.classList.remove("error");
 });
 
 elements.filterModal.addEventListener("click", (event) => {
@@ -1349,11 +1370,7 @@ elements.plannerExcludeButton.addEventListener("click", () => {
 
 elements.plannerClearAllButton.addEventListener("click", clearAllFilters);
 
-if ("BroadcastChannel" in window) {
-  const importChannel = new BroadcastChannel("war-deck-finder-imports");
-  importChannel.addEventListener("message", (event) => {
-    if (event.data?.type === "search-imported" && !state.isImportReturn) void loadSearchStatus();
-  });
-}
+window.addEventListener("message", receiveRoyaleApiImport);
+window.addEventListener("focus", prunePendingSearchTabs);
 
 initialize();
