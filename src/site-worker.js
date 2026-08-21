@@ -168,6 +168,10 @@ function normalizeImportPayload(payload) {
     seenDecks.add(parsed.statsUrl);
 
     const name = typeof deck.name === "string" ? deck.name.trim().slice(0, 120) : "";
+    const rating = deck.rating;
+    if (typeof rating !== "number" || !Number.isFinite(rating) || rating < 0 || rating > 100) {
+      throw new RequestError(`Imported deck ${index + 1} has an invalid rating.`);
+    }
     const winRate = deck.winRate == null ? null : Number(deck.winRate);
     if (winRate !== null && (!Number.isFinite(winRate) || winRate < 0 || winRate > 100)) {
       throw new RequestError(`Imported deck ${index + 1} has an invalid win rate.`);
@@ -177,6 +181,7 @@ function normalizeImportPayload(payload) {
       rank: index + 1,
       name: name || `Deck ${index + 1}`,
       cardNames: [],
+      rating,
       winRate,
       ...parsed,
     };
@@ -210,8 +215,12 @@ function findValidWarDecksFromPools(candidateDecks, candidatePools) {
       const bundleKey = decks.map(deckIdentity).sort().join("|");
       if (seenBundles.has(bundleKey)) return;
       seenBundles.add(bundleKey);
+      const ratings = decks.map((deck) => deck.rating);
+      const averageRating = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
+      const lowestRating = Math.min(...ratings);
       warDecks.push({
         id: indexes.join("-"),
+        bundleScore: averageRating * 0.75 + lowestRating * 0.25,
         candidateIndexes: indexes,
         deckRanks: decks.map((deck, index) => deck.rank ?? indexes[index] + 1),
         deckNames: decks.map((deck) => deck.name ?? null),
@@ -225,6 +234,7 @@ function findValidWarDecksFromPools(candidateDecks, candidatePools) {
   }
 
   visit(0, []);
+  warDecks.sort((a, b) => b.bundleScore - a.bundleScore);
   return warDecks;
 }
 

@@ -158,15 +158,23 @@ function collectRoyaleApiDecks(targetOrigin) {
       .map((segment, index) => {
         const statsAnchor = segment.querySelector('a[href^="/decks/stats/"]');
         const statsText = segment.textContent ?? "";
+        const ratingMatch = statsText.match(
+          /Rating\s*Usage\s*Wins?\s*Draws?\s*Losses?\s*(\d+(?:\.\d+)?)/iu,
+        );
         const winsMatch = statsText.match(/([\d.]+)%\s*[\d.]+%\s*[\d.]+%/u);
         return {
           rank: index + 1,
           name: segment.querySelector("h4")?.textContent?.trim() || `Deck ${index + 1}`,
           statsUrl: statsAnchor?.href ?? null,
+          rating: ratingMatch ? Number.parseFloat(ratingMatch[1]) : null,
           winRate: winsMatch ? Number.parseFloat(winsMatch[1]) : null,
         };
       })
       .filter((deck) => deck.statsUrl);
+
+    if (decks.some((deck) => deck.rating === null)) {
+      throw new Error("A deck Rating is not ready. Wait for RoyaleAPI to finish loading, then try again.");
+    }
 
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const timeout = window.setTimeout(() => {

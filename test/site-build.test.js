@@ -15,6 +15,11 @@ const CANDIDATE_CARDS = [
   ["lightning", "pekka", "battle-ram", "bandit", "royal-ghost", "electro-wizard", "magic-archer", "heal-spirit"],
 ];
 
+const ALTERNATE_CARDS = [
+  "goblin-barrel", "princess", "inferno-tower", "rocket",
+  "goblin-gang", "ice-golem", "the-log", "dart-goblin",
+];
+
 async function loadWorker() {
   const url = pathToFileURL(path.join(ROOT, "dist/server/index.js"));
   url.searchParams.set("test", `${process.pid}-${Date.now()}-${Math.random()}`);
@@ -41,16 +46,17 @@ function createEnv() {
   };
 }
 
-function candidateDeck(index) {
-  const cards = CANDIDATE_CARDS[index];
+function candidateDeck(index, overrides = {}) {
+  const cards = overrides.cards ?? CANDIDATE_CARDS[index];
   return {
     name: `Imported deck ${index + 1}`,
     statsUrl: `https://royaleapi.com/decks/stats/${cards.join(",")}`,
+    rating: overrides.rating ?? 60 - index,
     winRate: 50 + index,
   };
 }
 
-function importPayload({ include = [], exclude = [], deckIndexes = [0, 1, 2, 3], days = 1 } = {}) {
+function importPayload({ include = [], exclude = [], deckIndexes = [0, 1, 2, 3], days = 1, decks } = {}) {
   const sourceUrl = new URL("https://royaleapi.com/decks/popular");
   sourceUrl.searchParams.set("time", `${days}d`);
   sourceUrl.searchParams.set("size", "30");
@@ -59,7 +65,7 @@ function importPayload({ include = [], exclude = [], deckIndexes = [0, 1, 2, 3],
   return {
     timeRange: `${days}d`,
     sourceUrl: sourceUrl.toString(),
-    decks: deckIndexes.map(candidateDeck),
+    decks: decks ?? deckIndexes.map(candidateDeck),
   };
 }
 
@@ -119,6 +125,7 @@ test("client returns bookmarklet data to its opener without persistent storage",
   assert.match(app, /deckImports: Array\(4\)\.fill\(null\)/u);
   assert.match(app, /days: 7,/u);
   assert.match(app, /second: "2-digit"/u);
+  assert.match(app, /rating: ratingMatch \? Number\.parseFloat\(ratingMatch\[1\]\) : null/u);
   assert.doesNotMatch(app, /bundles found · 4 candidate pools/u);
   assert.doesNotMatch(html, /id="clear-deck-button"/u);
   assert.match(html, /Install the bookmarklet once/u);
@@ -157,6 +164,51 @@ test("four exact in-memory searches become four combinatorics pools", async () =
   assert.equal(result.candidateDecks.length, 4);
   assert.equal(result.warDecks.length, 1);
   assert.deepEqual(result.warDecks[0].candidateIndexes, [0, 1, 2, 3]);
+});
+
+test("bundles are sorted by weighted average and lowest RoyaleAPI rating", async () => {
+  const worker = await loadWorker();
+  const env = createEnv();
+  const response = await findWarDecks(worker, env, {
+    days: 1,
+    deckFilters: deckFilters(),
+    imports: [
+      importPayload({
+        decks: [
+          candidateDeck(0, { rating: 50 }),
+          candidateDeck(4, { cards: ALTERNATE_CARDS, rating: 90 }),
+        ],
+      }),
+      importPayload({ decks: [candidateDeck(1, { rating: 60 })] }),
+      importPayload({ decks: [candidateDeck(2, { rating: 60 })] }),
+      importPayload({ decks: [candidateDeck(3, { rating: 60 })] }),
+    ],
+  });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.warDecks.length, 2);
+  assert.deepEqual(result.warDecks[0].candidateIndexes, [1, 2, 3, 4]);
+  assert.equal(result.warDecks[0].bundleScore, 65.625);
+  assert.equal(result.warDecks[1].bundleScore, 55.625);
+});
+
+test("every imported candidate must include a valid RoyaleAPI rating", async () => {
+  const worker = await loadWorker();
+  const env = createEnv();
+  const unratedDeck = candidateDeck(0);
+  delete unratedDeck.rating;
+  const response = await findWarDecks(worker, env, {
+    days: 1,
+    deckFilters: deckFilters(),
+    imports: [
+      importPayload({ decks: [unratedDeck] }),
+      importPayload({ deckIndexes: [1] }),
+      importPayload({ deckIndexes: [2] }),
+      importPayload({ deckIndexes: [3] }),
+    ],
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).message, /invalid rating/u);
 });
 
 test("missing in-memory pools prevent combinatorics and identify the decks", async () => {
