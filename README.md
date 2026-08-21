@@ -10,7 +10,7 @@ RoyaleAPI searches.
 2. Choose the meta window and configure the include/exclude cards for all four deck slots.
 3. Click **Open all RoyaleAPI searches**. The Finder opens one page for every unique search,
    so identical deck filters share a single page.
-4. Wait for each RoyaleAPI result page to load, then click the saved favorite. Each page
+4. Wait for each RoyaleAPI result page to load, then click the saved bookmarklet. Each page
    returns its candidates to the original Finder tab and closes automatically.
 5. In the original Finder tab, click **Find decks**.
 

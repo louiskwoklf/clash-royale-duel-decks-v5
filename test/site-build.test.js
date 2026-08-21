@@ -86,6 +86,11 @@ test("Sites worker serves the finished page with absolute social metadata", asyn
   assert.match(response.headers.get("content-type"), /^text\/html/u);
   const html = await response.text();
   assert.match(html, /<title>War Deck Finder<\/title>/u);
+  assert.match(html, /class="brand-name">War Deck Finder<\/span>/u);
+  assert.match(
+    html,
+    /class="range-tab active"[^>]+data-days="7"[^>]+aria-pressed="true"/u,
+  );
   assert.match(html, /Open all RoyaleAPI searches/u);
   assert.match(html, /id="find-decks-button"/u);
   assert.doesNotMatch(html, /id="deck-search-actions"/u);
@@ -107,10 +112,16 @@ test("Sites worker exposes the card catalog without a network call", async () =>
 
 test("client returns bookmarklet data to its opener without persistent storage", async () => {
   const app = await fs.readFile(path.join(ROOT, "dist/client/app.js"), "utf8");
+  const html = await fs.readFile(path.join(ROOT, "dist/client/index.html"), "utf8");
   assert.match(app, /const finderWindow = window\.opener;/u);
   assert.match(app, /finderWindow\.postMessage\(/u);
   assert.match(app, /window\.close\(\);/u);
   assert.match(app, /deckImports: Array\(4\)\.fill\(null\)/u);
+  assert.match(app, /days: 7,/u);
+  assert.match(app, /second: "2-digit"/u);
+  assert.doesNotMatch(app, /bundles found · 4 candidate pools/u);
+  assert.doesNotMatch(html, /id="clear-deck-button"/u);
+  assert.match(html, /Install the bookmarklet once/u);
   assert.doesNotMatch(app, /BroadcastChannel|localStorage|sessionStorage|#import=|\/api\/import-decks|\/api\/deck-searches/u);
 });
 

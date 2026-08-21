@@ -5,7 +5,6 @@ const DECK_SLOT_SIZE = 8;
 
 const elements = {
   cardPickerGrid: document.querySelector("#card-picker-grid"),
-  clearDeckButton: document.querySelector("#clear-deck-button"),
   dataButton: document.querySelector("#data-button"),
   dataCloseButton: document.querySelector("#data-close-button"),
   dataImportMessage: document.querySelector("#data-import-message"),
@@ -45,7 +44,7 @@ const state = {
   controller: null,
   data: null,
   deckImports: Array(4).fill(null),
-  days: 1,
+  days: 7,
   deckFilters: Array.from({ length: 4 }, () => ({ include: [], exclude: [] })),
   globalExclude: [],
   loading: false,
@@ -130,7 +129,7 @@ function uniqueDeckSearches() {
   return [...searches.values()];
 }
 
-// This function is serialized into the Safari favorite, so it must remain
+// This function is serialized into the Safari bookmarklet, so it must remain
 // self-contained: it cannot refer to any variables or helpers from this file.
 function collectRoyaleApiDecks(targetOrigin) {
   try {
@@ -142,7 +141,7 @@ function collectRoyaleApiDecks(targetOrigin) {
     const pageUrl = new URL(window.location.href);
     const hostname = pageUrl.hostname.replace(/^www\./u, "");
     if (hostname !== "royaleapi.com" || pageUrl.pathname !== "/decks/popular") {
-      throw new Error("Open a RoyaleAPI popular-decks page before using this favorite.");
+      throw new Error("Open a RoyaleAPI popular-decks page before using this bookmarklet.");
     }
 
     const timeRange = pageUrl.searchParams.get("time");
@@ -224,6 +223,17 @@ function formatImportedAt(value) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date)}`;
+}
+
+function formatImportedTime(value) {
+  if (!value) return "Ready";
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "Ready";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
 }
 
 function cardNameForKey(key) {
@@ -458,17 +468,11 @@ function updateFilterDeckName() {
 // -- beginners otherwise have no way to tell "Exclude" apart from "Exclude
 // from every deck" since they share the same tab.
 function updatePickerScopeNote() {
-  const deckLabel = `Deck ${state.activeDeckFilter + 1}`;
   const isGlobal = state.pickerScope === "global";
   elements.pickerScopeNote.classList.toggle("global", state.pickerMode === "exclude" && isGlobal);
-
-  if (state.pickerMode === "include") {
-    elements.pickerScopeNote.textContent = `Adding cards to ${deckLabel}.`;
-  } else if (isGlobal) {
-    elements.pickerScopeNote.textContent = "Removing cards from all 4 decks.";
-  } else {
-    elements.pickerScopeNote.textContent = `Removing cards from ${deckLabel}.`;
-  }
+  const showGlobalNote = state.pickerMode === "exclude" && isGlobal;
+  elements.pickerScopeNote.textContent = showGlobalNote ? "Excluding cards from all decks." : "";
+  elements.pickerScopeNote.classList.toggle("hidden", !showGlobalNote);
 }
 
 function changeDeckFilter(deckIndex, mode, cardKey, action) {
@@ -540,16 +544,9 @@ function togglePickerCard(cardKey) {
   );
 }
 
-function clearActiveDeckFilter() {
-  // Inside the global-exclude flow, "the deck" isn't any one deck -- clear
-  // the global list instead of a specific (and irrelevant) deck's filter.
-  if (state.pickerScope === "global") {
-    state.globalExclude = [];
-    clearDeckImports(state.deckFilters.map((_, index) => index));
-  } else {
-    state.deckFilters[state.activeDeckFilter] = { include: [], exclude: [] };
-    clearDeckImports([state.activeDeckFilter]);
-  }
+function clearDeckFilter(deckIndex) {
+  state.deckFilters[deckIndex] = { include: [], exclude: [] };
+  clearDeckImports([deckIndex]);
   renderDeckFilterPanel();
   markResultsStale();
 }
@@ -617,9 +614,12 @@ function createDeckSlot(deckIndex) {
     pending
       ? "Waiting for RoyaleAPI…"
       : imported
-        ? `${imported.payload.decks.length} candidates · ${formatImportedAt(imported.importedAt)}`
+        ? `${imported.payload.decks.length} candidates · ${formatImportedTime(imported.importedAt)}`
         : "No candidate data",
   );
+  if (imported) {
+    dataStatus.title = `${imported.payload.decks.length} candidates · ${formatImportedAt(imported.importedAt)}`;
+  }
   const dataButton = makeElement(
     "button",
     "deck-data-button",
@@ -635,8 +635,16 @@ function createDeckSlot(deckIndex) {
     event.stopPropagation();
     openDeckSearch(deckIndex);
   });
+  const clearButton = makeElement("button", "clear-deck-button", "Clear deck");
+  clearButton.type = "button";
+  clearButton.disabled = filter.include.length === 0 && filter.exclude.length === 0;
+  clearButton.setAttribute("aria-label", `Clear filters for Deck ${deckNumber}`);
+  clearButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    clearDeckFilter(deckIndex);
+  });
   const dataControls = makeElement("div", "deck-data-controls");
-  dataControls.append(dataStatus, dataButton);
+  dataControls.append(dataStatus, dataButton, clearButton);
   header.append(makeElement("span", "deck-slot-title", `Deck ${deckNumber} filters`), dataControls);
 
   const slotCards = makeElement("div", "deck-slot-cards");
@@ -980,7 +988,9 @@ function createDeckPanel(deck, rank) {
     stats.append(makeElement("span", "deck-stat", `Avg Elixir: ${average.toFixed(1)}`));
   }
   if (typeof deck?.winRate === "number") {
-    stats.append(makeElement("span", "deck-stat winrate", `Win Rate: ${deck.winRate.toFixed(1)}%`));
+    const winRate = makeElement("span", "deck-stat winrate", `Win Rate: ${deck.winRate.toFixed(1)}%`);
+    winRate.classList.toggle("negative", deck.winRate < 50);
+    stats.append(winRate);
   }
   if (stats.children.length > 0) {
     panel.append(stats);
@@ -1099,8 +1109,7 @@ function renderResults() {
     ...visible.map((warDeck, index) => createWarDeckCard(warDeck, start + index, index === 0)),
   );
 
-  elements.resultsSummary.textContent =
-    `${formatNumber(results.length)} bundles found · 4 candidate pools`;
+  elements.resultsSummary.textContent = `${formatNumber(results.length)} bundles found`;
 
   const isEmpty = results.length === 0;
   elements.emptyState.classList.toggle("hidden", !isEmpty);
@@ -1328,8 +1337,6 @@ elements.pickerModeTabs.forEach((tab) => {
     setPickerMode(tab.dataset.mode);
   });
 });
-
-elements.clearDeckButton.addEventListener("click", clearActiveDeckFilter);
 
 elements.filterCloseButton.addEventListener("click", closeFilterModal);
 

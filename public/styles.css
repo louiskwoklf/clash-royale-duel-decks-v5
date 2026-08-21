@@ -22,6 +22,8 @@
 
   --warning: #db2828;
   --warning-tint: rgba(219, 40, 40, 0.08);
+  --success: #16813e;
+  --danger: #8b0000;
 
   --ink: rgba(0, 0, 0, 0.87);
   --canvas-dark: #1b1c1d;
@@ -168,10 +170,6 @@ h1, h2, h3 {
   font-size: 18px;
   font-weight: 400;
   letter-spacing: 0.1px;
-}
-
-.brand-name strong {
-  font-weight: 700;
 }
 
 /* --- Search controls ------------------------------------------------------ */
@@ -424,7 +422,7 @@ body.is-loading .find-decks-icon {
 
 .planner-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
@@ -464,7 +462,9 @@ body.is-loading .find-decks-icon {
 }
 
 .planner-action-button.exclude:hover {
-  background: var(--control-hover);
+  color: #fff;
+  border-color: var(--warning);
+  background: var(--warning);
 }
 
 .planner-action-button.clear-all {
@@ -473,7 +473,9 @@ body.is-loading .find-decks-icon {
 }
 
 .planner-action-button.clear-all:hover {
-  background: var(--control-hover);
+  color: #fff;
+  border-color: var(--danger);
+  background: var(--danger);
 }
 
 .deck-slot:hover {
@@ -516,7 +518,7 @@ body.is-loading .find-decks-icon {
 }
 
 .deck-data-status.ready {
-  color: #16813e;
+  color: var(--success);
 }
 
 .deck-data-status.pending {
@@ -780,11 +782,13 @@ body.modal-open {
   min-height: 24px;
   margin: 0;
   font-weight: 600;
-  color: #16813e;
+  color: var(--warning);
 }
 
 .clear-deck-button {
-  padding: 8px 16px;
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 0 10px;
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 600;
@@ -796,9 +800,10 @@ body.modal-open {
   transition: background-color 120ms ease;
 }
 
-.clear-deck-button:hover {
-  color: var(--ink);
-  background: var(--control-hover);
+.clear-deck-button:hover:not(:disabled) {
+  color: #fff;
+  border-color: var(--danger);
+  background: var(--danger);
 }
 
 .picker-mode-tabs {
@@ -829,6 +834,11 @@ body.modal-open {
 .picker-mode-tab.active {
   background: var(--blue);
   color: var(--on-blue);
+}
+
+.picker-mode-tab.active[data-mode="include"] {
+  background: var(--success);
+  color: #fff;
 }
 
 .picker-mode-tab + .picker-mode-tab {
@@ -979,6 +989,11 @@ body.modal-open {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.planner-header,
+.results-toolbar {
+  min-height: 38px;
 }
 
 #results-heading {
@@ -1243,7 +1258,11 @@ body.results-stale .results-meta p {
 }
 
 .deck-stat.winrate {
-  color: #16813e;
+  color: var(--success);
+}
+
+.deck-stat.winrate.negative {
+  color: var(--warning);
 }
 
 /* --- Load more / empty / loading states ----------------------------------- */
