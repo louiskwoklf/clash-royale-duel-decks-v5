@@ -60,7 +60,6 @@
       <section class="control-strip">
         <div class="control-strip-copy">
           <h1>Find your war decks</h1>
-          <p>Four current-meta decks. 32 unique cards. Zero overlaps.</p>
         </div>
 
         <div class="control-strip-actions">
@@ -101,7 +100,7 @@
             <h2 class="planner-heading">Customise your decks</h2>
             <div class="planner-actions">
               <button class="planner-action-button exclude" id="planner-exclude-button" type="button">
-                − Exclude
+                − Exclude from all
               </button>
               <button class="planner-action-button clear-all" id="planner-clear-all-button" type="button">
                 Clear all
@@ -109,18 +108,13 @@
             </div>
           </div>
 
-          <p class="planner-instructions">
-            <strong>Exclude</strong> here removes a card from <strong>all 4 decks</strong>.
-            Select and click a deck below to include or exclude for <strong>that deck only</strong>.
-          </p>
-
           <div
             class="planner-exclude-strip hidden"
             id="planner-exclude-strip"
             aria-label="Cards excluded from all decks"
           ></div>
 
-          <div class="deck-slot-grid" id="deck-slot-grid" aria-label="Deck include filters"></div>
+          <div class="deck-slot-grid" id="deck-slot-grid" aria-label="Deck-specific filters"></div>
 
         </aside>
 

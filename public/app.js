@@ -595,6 +595,7 @@ function createDeckSlot(deckIndex) {
   const isActive = deckIndex === state.activeDeckFilter;
   button.tabIndex = 0;
   button.setAttribute("role", "button");
+  button.setAttribute("aria-label", `Edit filters for Deck ${deckIndex + 1}`);
   button.classList.toggle("active", isActive);
   button.setAttribute("aria-pressed", String(isActive));
   button.addEventListener("click", () => openFilterModal(deckIndex));
@@ -636,7 +637,7 @@ function createDeckSlot(deckIndex) {
   });
   const dataControls = makeElement("div", "deck-data-controls");
   dataControls.append(dataStatus, dataButton);
-  header.append(makeElement("span", "deck-slot-title", `Deck ${deckNumber}`), dataControls);
+  header.append(makeElement("span", "deck-slot-title", `Deck ${deckNumber} filters`), dataControls);
 
   const slotCards = makeElement("div", "deck-slot-cards");
   filter.include.forEach((cardKey) => {

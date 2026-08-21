@@ -205,13 +205,6 @@ h1, h2, h3 {
   color: var(--ink);
 }
 
-.control-strip-copy p {
-  margin: 8px 0 0;
-  color: var(--mute-light);
-  font-size: 15px;
-  letter-spacing: 0.01em;
-}
-
 .control-strip-actions {
   position: relative;
   z-index: 1;
@@ -407,17 +400,6 @@ body.is-loading .find-decks-icon {
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: border-color 120ms ease, background-color 120ms ease;
-}
-
-.planner-instructions {
-  margin: -6px 0 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--mute-light);
-}
-
-.planner-instructions strong {
-  color: var(--ink);
 }
 
 /* Global exclusions, shown under the deck slots */
