@@ -479,8 +479,8 @@ body.is-loading .find-decks-icon {
 }
 
 .deck-slot:hover {
-  border-color: #aeb0b3;
-  background: var(--canvas-light);
+  border-color: #c2c4c7;
+  background: #f7f8fa;
 }
 
 .deck-slot-header {
@@ -542,15 +542,6 @@ body.is-loading .find-decks-icon {
 .deck-data-button:hover:not(:disabled) {
   color: var(--ink);
   background: var(--control-hover);
-}
-
-.deck-slot.active {
-  border-color: var(--blue);
-  box-shadow: 0 0 0 1px var(--blue);
-}
-
-.deck-slot.active .deck-slot-title {
-  color: var(--blue);
 }
 
 .deck-slot-cards {

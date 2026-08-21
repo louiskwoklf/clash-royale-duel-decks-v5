@@ -121,6 +121,7 @@ test("Sites worker exposes the card catalog without a network call", async () =>
 test("client returns bookmarklet data to its opener without persistent storage", async () => {
   const app = await fs.readFile(path.join(ROOT, "dist/client/app.js"), "utf8");
   const html = await fs.readFile(path.join(ROOT, "dist/client/index.html"), "utf8");
+  const styles = await fs.readFile(path.join(ROOT, "dist/client/styles.css"), "utf8");
   assert.match(app, /const finderWindow = window\.opener;/u);
   assert.match(app, /finderWindow\.postMessage\(/u);
   assert.match(app, /window\.close\(\);/u);
@@ -135,6 +136,9 @@ test("client returns bookmarklet data to its opener without persistent storage",
   assert.match(html, /Install the bookmarklet once/u);
   assert.match(html, />\s*⚡ Send search to Finder\s*<\/a>/u);
   assert.match(app, /javascript:\/\*war-deck-finder-bookmarklet-v3\*\//u);
+  assert.doesNotMatch(app, /classList\.toggle\("active", isActive\)|aria-pressed[^\n]+isActive/u);
+  assert.doesNotMatch(styles, /\.deck-slot\.active/u);
+  assert.match(styles, /\.deck-slot:hover\s*\{[^}]+background: #f7f8fa;/u);
   assert.doesNotMatch(app, /BroadcastChannel|localStorage|sessionStorage|#import=|\/api\/import-decks|\/api\/deck-searches/u);
 });
 

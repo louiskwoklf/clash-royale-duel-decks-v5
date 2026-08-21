@@ -608,12 +608,9 @@ function createSelectedCardTile(deckIndex, mode, cardKey) {
 function createDeckSlot(deckIndex) {
   const filter = state.deckFilters[deckIndex];
   const button = makeElement("section", "deck-slot");
-  const isActive = deckIndex === state.activeDeckFilter;
   button.tabIndex = 0;
   button.setAttribute("role", "button");
   button.setAttribute("aria-label", `Edit filters for Deck ${deckIndex + 1}`);
-  button.classList.toggle("active", isActive);
-  button.setAttribute("aria-pressed", String(isActive));
   button.addEventListener("click", () => openFilterModal(deckIndex));
   button.addEventListener("keydown", (event) => {
     if (event.target !== button) return;
