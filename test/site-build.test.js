@@ -93,6 +93,7 @@ test("Sites worker serves the finished page with absolute social metadata", asyn
   assert.match(response.headers.get("content-type"), /^text\/html/u);
   const html = await response.text();
   assert.match(html, /<title>War Deck Finder<\/title>/u);
+  assert.match(html, /<link rel="icon" href="\/favicon\.svg" type="image\/svg\+xml" \/>/u);
   assert.match(html, /class="brand-name">War Deck Finder<\/span>/u);
   assert.match(
     html,
@@ -132,6 +133,7 @@ test("client returns bookmarklet data to its opener without persistent storage",
   assert.doesNotMatch(app, /bundles found · 4 candidate pools/u);
   assert.doesNotMatch(html, /id="clear-deck-button"/u);
   assert.match(html, /Install the bookmarklet once/u);
+  assert.match(html, /class="bookmarklet-icon" src="\/favicon\.svg"/u);
   assert.doesNotMatch(app, /BroadcastChannel|localStorage|sessionStorage|#import=|\/api\/import-decks|\/api\/deck-searches/u);
 });
 
