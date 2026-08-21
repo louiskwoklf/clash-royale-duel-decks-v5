@@ -50,7 +50,8 @@ function candidateDeck(index, overrides = {}) {
   const cards = overrides.cards ?? CANDIDATE_CARDS[index];
   return {
     name: `Imported deck ${index + 1}`,
-    statsUrl: `https://royaleapi.com/decks/stats/${cards.join(",")}`,
+    statsUrl: `https://royaleapi.com/decks/stats/${[...cards].sort().join(",")}`,
+    cards: [...cards],
     rating: overrides.rating ?? 60 - index,
     winRate: 50 + index,
   };
@@ -126,6 +127,7 @@ test("client returns bookmarklet data to its opener without persistent storage",
   assert.match(app, /days: 7,/u);
   assert.match(app, /second: "2-digit"/u);
   assert.match(app, /rating: ratingMatch \? Number\.parseFloat\(ratingMatch\[1\]\) : null/u);
+  assert.match(app, /querySelectorAll\("img\.deck_card"\)/u);
   assert.doesNotMatch(app, /function orderDeckCards/u);
   assert.doesNotMatch(app, /bundles found · 4 candidate pools/u);
   assert.doesNotMatch(html, /id="clear-deck-button"/u);

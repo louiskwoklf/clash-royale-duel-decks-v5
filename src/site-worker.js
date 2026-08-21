@@ -167,6 +167,15 @@ function normalizeImportPayload(payload) {
     }
     seenDecks.add(parsed.statsUrl);
 
+    if (
+      !Array.isArray(deck.cards) ||
+      deck.cards.length !== 8 ||
+      new Set(deck.cards).size !== 8 ||
+      deck.cards.some((card) => typeof card !== "string" || !parsed.cards.includes(card))
+    ) {
+      throw new RequestError(`Imported deck ${index + 1} has an invalid card order.`);
+    }
+
     const name = typeof deck.name === "string" ? deck.name.trim().slice(0, 120) : "";
     const rating = deck.rating;
     if (typeof rating !== "number" || !Number.isFinite(rating) || rating < 0 || rating > 100) {
@@ -184,6 +193,7 @@ function normalizeImportPayload(payload) {
       rating,
       winRate,
       ...parsed,
+      cards: [...deck.cards],
     };
   });
 

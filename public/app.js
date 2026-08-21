@@ -158,6 +158,13 @@ function collectRoyaleApiDecks(targetOrigin) {
       .map((segment, index) => {
         const statsAnchor = segment.querySelector('a[href^="/decks/stats/"]');
         const statsText = segment.textContent ?? "";
+        const cards = [...segment.querySelectorAll("img.deck_card")]
+          .map((image) =>
+            [...image.classList]
+              .find((className) => className.startsWith("deck_card_key_"))
+              ?.slice("deck_card_key_".length),
+          )
+          .filter(Boolean);
         const ratingMatch = statsText.match(
           /Rating\s*Usage\s*Wins?\s*Draws?\s*Losses?\s*(\d+(?:\.\d+)?)/iu,
         );
@@ -166,6 +173,7 @@ function collectRoyaleApiDecks(targetOrigin) {
           rank: index + 1,
           name: segment.querySelector("h4")?.textContent?.trim() || `Deck ${index + 1}`,
           statsUrl: statsAnchor?.href ?? null,
+          cards,
           rating: ratingMatch ? Number.parseFloat(ratingMatch[1]) : null,
           winRate: winsMatch ? Number.parseFloat(winsMatch[1]) : null,
         };
@@ -174,6 +182,9 @@ function collectRoyaleApiDecks(targetOrigin) {
 
     if (decks.some((deck) => deck.rating === null)) {
       throw new Error("A deck Rating is not ready. Wait for RoyaleAPI to finish loading, then try again.");
+    }
+    if (decks.some((deck) => deck.cards.length !== 8 || new Set(deck.cards).size !== 8)) {
+      throw new Error("A deck's cards are not ready. Wait for RoyaleAPI to finish loading, then try again.");
     }
 
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
