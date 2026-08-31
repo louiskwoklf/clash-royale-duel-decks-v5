@@ -144,7 +144,8 @@ function normalizeImportPayload(payload) {
   }
 
   const seenDecks = new Set();
-  const decks = payload.decks.map((deck, index) => {
+  const decks = [];
+  payload.decks.forEach((deck, index) => {
     if (!deck || typeof deck !== "object") {
       throw new RequestError(`Imported deck ${index + 1} is invalid.`);
     }
@@ -162,10 +163,9 @@ function normalizeImportPayload(payload) {
     if (!deckMatchesSearch(parsed, search)) {
       throw new RequestError(`Imported deck ${index + 1} does not match the RoyaleAPI search.`);
     }
-    if (seenDecks.has(parsed.statsUrl)) {
-      throw new RequestError(`Imported deck ${index + 1} is duplicated.`);
-    }
-    seenDecks.add(parsed.statsUrl);
+    const deckKey = [...parsed.cards].sort().join(",");
+    if (seenDecks.has(deckKey)) return;
+    seenDecks.add(deckKey);
 
     if (
       !Array.isArray(deck.cards) ||
@@ -186,7 +186,7 @@ function normalizeImportPayload(payload) {
       throw new RequestError(`Imported deck ${index + 1} has an invalid win rate.`);
     }
 
-    return {
+    decks.push({
       rank: index + 1,
       name: name || `Deck ${index + 1}`,
       cardNames: [],
@@ -194,7 +194,7 @@ function normalizeImportPayload(payload) {
       winRate,
       ...parsed,
       cards: [...deck.cards],
-    };
+    });
   });
 
   return { search, decks };

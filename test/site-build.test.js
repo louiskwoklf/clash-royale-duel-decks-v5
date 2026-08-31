@@ -177,6 +177,33 @@ test("four exact in-memory searches become four combinatorics pools", async () =
   assert.deepEqual(result.warDecks[0].candidateIndexes, [0, 1, 2, 3]);
 });
 
+test("duplicate RoyaleAPI candidates are ignored without changing later ranks", async () => {
+  const worker = await loadWorker();
+  const env = createEnv();
+  const response = await findWarDecks(worker, env, {
+    days: 1,
+    deckFilters: deckFilters(),
+    imports: [
+      importPayload({
+        decks: [
+          candidateDeck(0),
+          candidateDeck(0),
+          candidateDeck(4, { cards: ALTERNATE_CARDS }),
+        ],
+      }),
+      importPayload({ deckIndexes: [1] }),
+      importPayload({ deckIndexes: [2] }),
+      importPayload({ deckIndexes: [3] }),
+    ],
+  });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.candidateDecks.length, 5);
+  assert.equal(result.candidateDecks[0].rank, 1);
+  assert.equal(result.candidateDecks[1].rank, 3);
+  assert.equal(result.warDecks.length, 2);
+});
+
 test("bundles are sorted by weighted average and lowest RoyaleAPI rating", async () => {
   const worker = await loadWorker();
   const env = createEnv();
