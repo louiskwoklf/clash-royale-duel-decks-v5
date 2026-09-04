@@ -118,7 +118,7 @@ test("Sites worker exposes the card catalog without a network call", async () =>
   assert.ok(data.cards.some((card) => card.key === "hog-rider"));
 });
 
-test("client returns bookmarklet data to its opener without persistent storage", async () => {
+test("client returns bookmarklet data through a Cloudflare-safe local relay", async () => {
   const app = await fs.readFile(path.join(ROOT, "dist/client/app.js"), "utf8");
   const html = await fs.readFile(path.join(ROOT, "dist/client/index.html"), "utf8");
   const styles = await fs.readFile(path.join(ROOT, "dist/client/styles.css"), "utf8");
@@ -135,11 +135,17 @@ test("client returns bookmarklet data to its opener without persistent storage",
   assert.doesNotMatch(html, /id="clear-deck-button"/u);
   assert.match(html, /Install the bookmarklet once/u);
   assert.match(html, />\s*⚡ Send search to Finder\s*<\/a>/u);
-  assert.match(app, /javascript:\/\*war-deck-finder-bookmarklet-v3\*\//u);
+  assert.match(app, /javascript:\/\*war-deck-finder-bookmarklet-v4\*\//u);
+  assert.match(app, /pageUrl\.searchParams\.get\("wdf_import"\)/u);
+  assert.match(app, /window\.location\.assign\(`\$\{targetOrigin\}\/#import=/u);
+  assert.match(app, /war-deck-finder:pending-import:/u);
+  assert.match(app, /war-deck-finder:relayed-import:/u);
+  assert.match(app, /window\.localStorage\.setItem/u);
+  assert.match(app, /new BroadcastChannel\(IMPORT_CHANNEL_NAME\)/u);
   assert.doesNotMatch(app, /classList\.toggle\("active", isActive\)|aria-pressed[^\n]+isActive/u);
   assert.doesNotMatch(styles, /\.deck-slot\.active/u);
   assert.match(styles, /\.deck-slot:hover\s*\{[^}]+background: #f7f8fa;/u);
-  assert.doesNotMatch(app, /BroadcastChannel|localStorage|sessionStorage|#import=|\/api\/import-decks|\/api\/deck-searches/u);
+  assert.doesNotMatch(app, /sessionStorage|\/api\/import-decks|\/api\/deck-searches/u);
 });
 
 test("four submitted candidate pools stay independent when filters are identical", async () => {

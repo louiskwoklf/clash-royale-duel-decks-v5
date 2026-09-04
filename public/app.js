@@ -2,6 +2,11 @@
 
 const PAGE_SIZE = 8;
 const DECK_SLOT_SIZE = 8;
+const IMPORT_CHANNEL_NAME = "war-deck-finder-imports-v2";
+const IMPORT_PENDING_PREFIX = "war-deck-finder:pending-import:";
+const IMPORT_RELAY_PREFIX = "war-deck-finder:relayed-import:";
+const IMPORT_TRANSFER_MAX_AGE_MS = 30 * 60 * 1000;
+const importChannel = "BroadcastChannel" in window ? new BroadcastChannel(IMPORT_CHANNEL_NAME) : null;
 
 const elements = {
   cardPickerGrid: document.querySelector("#card-picker-grid"),
@@ -53,6 +58,7 @@ const state = {
   // toggles apply to all four decks. Include is always deck-scoped.
   pickerScope: "deck",
   page: 0,
+  pendingSearches: new Map(),
   pendingSearchTabs: new Map(),
 };
 
@@ -129,15 +135,94 @@ function uniqueDeckSearches() {
   return [...searches.values()];
 }
 
+function importStorageKey(prefix, transferId) {
+  return `${prefix}${transferId}`;
+}
+
+function createImportTransferId() {
+  return typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function writeImportStorage(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readImportStorage(key) {
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+function removeImportStorage(key) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // The live postMessage/BroadcastChannel path still works when storage is unavailable.
+  }
+}
+
+function storedPendingSearch(transferId) {
+  const pending = readImportStorage(importStorageKey(IMPORT_PENDING_PREFIX, transferId));
+  if (
+    !pending ||
+    pending.transferId !== transferId ||
+    !pending.search ||
+    !Array.isArray(pending.deckIndexes) ||
+    !Number.isFinite(pending.createdAt) ||
+    Date.now() - pending.createdAt > IMPORT_TRANSFER_MAX_AGE_MS
+  ) {
+    return null;
+  }
+  return pending;
+}
+
+function persistPendingSearch(pending) {
+  writeImportStorage(importStorageKey(IMPORT_PENDING_PREFIX, pending.transferId), pending);
+}
+
+function forgetPendingSearch(transferId) {
+  state.pendingSearches.delete(transferId);
+  removeImportStorage(importStorageKey(IMPORT_PENDING_PREFIX, transferId));
+  state.pendingSearchTabs.forEach((pending, tab) => {
+    if (pending.transferId === transferId) state.pendingSearchTabs.delete(tab);
+  });
+}
+
+function pruneExpiredImportTransfers() {
+  try {
+    const keys = Array.from({ length: window.localStorage.length }, (_, index) =>
+      window.localStorage.key(index),
+    ).filter(Boolean);
+    keys.forEach((key) => {
+      if (!key.startsWith(IMPORT_PENDING_PREFIX) && !key.startsWith(IMPORT_RELAY_PREFIX)) return;
+      const record = readImportStorage(key);
+      if (
+        !record ||
+        !Number.isFinite(record.createdAt) ||
+        Date.now() - record.createdAt > IMPORT_TRANSFER_MAX_AGE_MS
+      ) {
+        removeImportStorage(key);
+      }
+    });
+  } catch {
+    // Storage is an optional fallback; direct tab messaging remains available.
+  }
+}
+
 // This function is serialized into the Safari bookmarklet, so it must remain
 // self-contained: it cannot refer to any variables or helpers from this file.
 function collectRoyaleApiDecks(targetOrigin) {
   try {
-    const finderWindow = window.opener;
-    if (!finderWindow || finderWindow.closed) {
-      throw new Error("Return to the Finder and open this search from there first.");
-    }
-
     const pageUrl = new URL(window.location.href);
     const hostname = pageUrl.hostname.replace(/^www\./u, "");
     if (hostname !== "royaleapi.com" || pageUrl.pathname !== "/decks/popular") {
@@ -187,11 +272,43 @@ function collectRoyaleApiDecks(targetOrigin) {
       throw new Error("A deck's cards are not ready. Wait for RoyaleAPI to finish loading, then try again.");
     }
 
+    const transferId = pageUrl.searchParams.get("wdf_import");
+    pageUrl.searchParams.delete("wdf_import");
+    pageUrl.hash = "";
+    const payload = {
+      timeRange,
+      sourceUrl: pageUrl.toString(),
+      decks,
+    };
+
+    let relayStarted = false;
+    function relayThroughFinderPage() {
+      if (relayStarted) return;
+      relayStarted = true;
+      const json = JSON.stringify({ transferId, payload });
+      const bytes = new TextEncoder().encode(json);
+      let binary = "";
+      bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+      });
+      window.location.assign(`${targetOrigin}/#import=${btoa(binary)}`);
+    }
+
+    const finderWindow = window.opener;
+    if (!finderWindow || finderWindow.closed) {
+      relayThroughFinderPage();
+      return;
+    }
+
     const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const timeout = window.setTimeout(() => {
       window.removeEventListener("message", receiveResult);
-      window.alert("War Deck Finder: The original Finder tab did not acknowledge this data.");
-    }, 8000);
+      try {
+        relayThroughFinderPage();
+      } catch (error) {
+        window.alert(`War Deck Finder: ${error.message}`);
+      }
+    }, 2500);
 
     function receiveResult(event) {
       if (
@@ -205,23 +322,23 @@ function collectRoyaleApiDecks(targetOrigin) {
       window.clearTimeout(timeout);
       window.removeEventListener("message", receiveResult);
       if (!event.data.ok) {
-        window.alert(`War Deck Finder: ${event.data.message || "The import was rejected."}`);
+        if (transferId) {
+          relayThroughFinderPage();
+        } else {
+          window.alert(`War Deck Finder: ${event.data.message || "The import was rejected."}`);
+        }
         return;
       }
       window.close();
     }
 
     window.addEventListener("message", receiveResult);
-    pageUrl.hash = "";
     finderWindow.postMessage(
       {
         type: "war-deck-finder:import",
         requestId,
-        payload: {
-          timeRange,
-          sourceUrl: pageUrl.toString(),
-          decks,
-        },
+        transferId,
+        payload,
       },
       targetOrigin,
     );
@@ -231,7 +348,7 @@ function collectRoyaleApiDecks(targetOrigin) {
 }
 
 function createBookmarklet() {
-  return `javascript:/*war-deck-finder-bookmarklet-v3*/(${collectRoyaleApiDecks.toString()})(${JSON.stringify(window.location.origin)})`;
+  return `javascript:/*war-deck-finder-bookmarklet-v4*/(${collectRoyaleApiDecks.toString()})(${JSON.stringify(window.location.origin)})`;
 }
 
 function formatImportedAt(value) {
@@ -316,6 +433,7 @@ function prunePendingSearchTabs() {
   state.pendingSearchTabs.forEach((pending, tab) => {
     if (tab.closed) {
       state.pendingSearchTabs.delete(tab);
+      state.pendingSearches.delete(pending.transferId);
       changed = true;
     }
   });
@@ -324,9 +442,25 @@ function prunePendingSearchTabs() {
 
 function openSearchTab(search, deckIndexes) {
   prunePendingSearchTabs();
-  const tab = window.open(search.sourceUrl, "_blank");
-  if (!tab) return false;
-  state.pendingSearchTabs.set(tab, { search, deckIndexes: [...deckIndexes] });
+  pruneExpiredImportTransfers();
+  const transferId = createImportTransferId();
+  const pending = {
+    transferId,
+    search,
+    deckIndexes: [...deckIndexes],
+    createdAt: Date.now(),
+  };
+  state.pendingSearches.set(transferId, pending);
+  persistPendingSearch(pending);
+
+  const sourceUrl = new URL(search.sourceUrl);
+  sourceUrl.searchParams.set("wdf_import", transferId);
+  const tab = window.open(sourceUrl.toString(), "_blank");
+  if (!tab) {
+    forgetPendingSearch(transferId);
+    return false;
+  }
+  state.pendingSearchTabs.set(tab, pending);
   renderDeckSlots();
   return true;
 }
@@ -350,7 +484,7 @@ function openCurrentSearches() {
 }
 
 function isDeckSearchPending(deckIndex) {
-  return [...state.pendingSearchTabs.values()].some((pending) =>
+  return [...state.pendingSearches.values()].some((pending) =>
     pending.deckIndexes.includes(deckIndex),
   );
 }
@@ -360,9 +494,13 @@ function clearDeckImports(deckIndexes) {
   affected.forEach((deckIndex) => {
     state.deckImports[deckIndex] = null;
   });
-  state.pendingSearchTabs.forEach((pending, tab) => {
+  state.pendingSearches.forEach((pending) => {
     pending.deckIndexes = pending.deckIndexes.filter((deckIndex) => !affected.has(deckIndex));
-    if (pending.deckIndexes.length === 0) state.pendingSearchTabs.delete(tab);
+    if (pending.deckIndexes.length === 0) {
+      forgetPendingSearch(pending.transferId);
+    } else {
+      persistPendingSearch(pending);
+    }
   });
 }
 
@@ -414,6 +552,45 @@ function sendImportResult(event, requestId, ok, message = "") {
   );
 }
 
+function applyReturnedImport(payload, pending) {
+  const currentDeckIndexes = pending.deckIndexes.filter(
+    (deckIndex) => searchForDeck(deckIndex).id === pending.search.id,
+  );
+  if (currentDeckIndexes.length === 0) {
+    throw new Error("The Finder settings changed. Reopen this search.");
+  }
+
+  const imported = validateReturnedImport(payload, pending.search);
+  currentDeckIndexes.forEach((deckIndex) => {
+    state.deckImports[deckIndex] = imported;
+  });
+  forgetPendingSearch(pending.transferId);
+  renderDeckSlots();
+  markResultsStale();
+}
+
+function findStoredPendingSearch(payload) {
+  try {
+    return Array.from({ length: window.localStorage.length }, (_, index) =>
+      window.localStorage.key(index),
+    )
+      .filter((key) => key?.startsWith(IMPORT_PENDING_PREFIX))
+      .map((key) => readImportStorage(key))
+      .filter((pending) => {
+        if (!pending?.transferId || !storedPendingSearch(pending.transferId)) return false;
+        try {
+          validateReturnedImport(payload, pending.search);
+          return true;
+        } catch {
+          return false;
+        }
+      })
+      .sort((first, second) => second.createdAt - first.createdAt)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function receiveRoyaleApiImport(event) {
   if (
     !["https://royaleapi.com", "https://www.royaleapi.com"].includes(event.origin) ||
@@ -421,23 +598,119 @@ function receiveRoyaleApiImport(event) {
   ) {
     return;
   }
-  const pending = state.pendingSearchTabs.get(event.source);
+  const tabPending = state.pendingSearchTabs.get(event.source);
+  const transferId = event.data.transferId;
+  const pending =
+    tabPending ??
+    state.pendingSearches.get(transferId) ??
+    (typeof transferId === "string" ? storedPendingSearch(transferId) : null);
   if (!pending) {
     sendImportResult(event, event.data.requestId, false, "The Finder settings changed. Reopen this search.");
     return;
   }
   try {
-    const imported = validateReturnedImport(event.data.payload, pending.search);
-    pending.deckIndexes.forEach((deckIndex) => {
-      state.deckImports[deckIndex] = imported;
-    });
-    state.pendingSearchTabs.delete(event.source);
-    renderDeckSlots();
-    markResultsStale();
+    applyReturnedImport(event.data.payload, pending);
     sendImportResult(event, event.data.requestId, true);
   } catch (error) {
     sendImportResult(event, event.data.requestId, false, error.message);
   }
+}
+
+function decodeImportEnvelope(encoded) {
+  const binary = atob(encoded);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function relayRecordFromValue(value) {
+  let relay = value;
+  if (typeof relay === "string") {
+    try {
+      relay = JSON.parse(relay);
+    } catch {
+      return null;
+    }
+  }
+  if (
+    !relay ||
+    typeof relay.transferId !== "string" ||
+    !relay.payload ||
+    !Number.isFinite(relay.createdAt) ||
+    Date.now() - relay.createdAt > IMPORT_TRANSFER_MAX_AGE_MS
+  ) {
+    return null;
+  }
+  return relay;
+}
+
+function receiveRelayedImport(value) {
+  const relay = relayRecordFromValue(value);
+  if (!relay) return false;
+  const pending =
+    state.pendingSearches.get(relay.transferId) ?? storedPendingSearch(relay.transferId);
+  if (!pending) return false;
+
+  try {
+    applyReturnedImport(relay.payload, pending);
+    removeImportStorage(importStorageKey(IMPORT_RELAY_PREFIX, relay.transferId));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function consumeStoredImportRelays() {
+  try {
+    const relayKeys = Array.from({ length: window.localStorage.length }, (_, index) =>
+      window.localStorage.key(index),
+    ).filter((key) => key?.startsWith(IMPORT_RELAY_PREFIX));
+    relayKeys.forEach((key) => receiveRelayedImport(readImportStorage(key)));
+  } catch {
+    // BroadcastChannel can still deliver the import when storage is unavailable.
+  }
+}
+
+function handleImportReturn() {
+  if (!window.location.hash.startsWith("#import=")) return false;
+
+  const encoded = window.location.hash.slice("#import=".length);
+  window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  openDataModal();
+
+  try {
+    const envelope = decodeImportEnvelope(encoded);
+    if (!envelope || !envelope.payload) {
+      throw new Error("The returned RoyaleAPI data is incomplete. Reopen the search from the Finder.");
+    }
+    const pending =
+      (typeof envelope.transferId === "string"
+        ? storedPendingSearch(envelope.transferId)
+        : null) ?? findStoredPendingSearch(envelope.payload);
+    if (!pending) {
+      throw new Error("This Finder handoff expired. Return to the original tab and reopen the search.");
+    }
+    validateReturnedImport(envelope.payload, pending.search);
+
+    const relay = {
+      transferId: pending.transferId,
+      payload: envelope.payload,
+      createdAt: Date.now(),
+    };
+    const stored = writeImportStorage(
+      importStorageKey(IMPORT_RELAY_PREFIX, pending.transferId),
+      relay,
+    );
+    if (!stored && !importChannel) {
+      throw new Error("Safari blocked the Finder handoff. Reopen the search and try again.");
+    }
+    importChannel?.postMessage({ type: "war-deck-finder:relayed-import", relay });
+    elements.dataImportMessage.textContent =
+      "Candidate data returned to the original Finder tab. This tab will close automatically.";
+    window.setTimeout(() => window.close(), 300);
+  } catch (error) {
+    elements.dataImportMessage.textContent = error.message;
+  }
+  return true;
 }
 
 function setActiveDeckFilter(index) {
@@ -1189,9 +1462,12 @@ async function loadCards() {
 
 async function initialize() {
   elements.bookmarkletLink.href = createBookmarklet();
+  pruneExpiredImportTransfers();
+  if (handleImportReturn()) return;
 
   try {
     await loadCards();
+    consumeStoredImportRelays();
   } catch (error) {
     elements.emptyState.classList.remove("hidden");
     elements.emptyTitle.textContent = "Cards unavailable";
@@ -1367,5 +1643,18 @@ elements.plannerClearAllButton.addEventListener("click", clearAllFilters);
 
 window.addEventListener("message", receiveRoyaleApiImport);
 window.addEventListener("focus", prunePendingSearchTabs);
+window.addEventListener("storage", (event) => {
+  if (event.key?.startsWith(IMPORT_RELAY_PREFIX) && event.newValue) {
+    receiveRelayedImport(event.newValue);
+  }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") consumeStoredImportRelays();
+});
+importChannel?.addEventListener("message", (event) => {
+  if (event.data?.type === "war-deck-finder:relayed-import") {
+    receiveRelayedImport(event.data.relay);
+  }
+});
 
 initialize();
