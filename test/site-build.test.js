@@ -147,7 +147,7 @@ test("client returns bookmarklet data through a Cloudflare-safe local relay", as
   assert.match(app, /war-deck-finder:pending-import:/u);
   assert.match(app, /war-deck-finder:relayed-import:/u);
   assert.match(app, /window\.localStorage\.setItem/u);
-  assert.match(app, /new BroadcastChannel\(IMPORT_CHANNEL_NAME\)/u);
+  assert.doesNotMatch(app, /BroadcastChannel/u);
   assert.doesNotMatch(app, /classList\.toggle\("active", isActive\)|aria-pressed[^\n]+isActive/u);
   assert.doesNotMatch(styles, /\.deck-slot\.active/u);
   assert.match(styles, /\.deck-slot:hover\s*\{[^}]+background: #f7f8fa;/u);

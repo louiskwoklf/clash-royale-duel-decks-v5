@@ -2,11 +2,9 @@
 
 const PAGE_SIZE = 8;
 const DECK_SLOT_SIZE = 8;
-const IMPORT_CHANNEL_NAME = "war-deck-finder-imports-v2";
 const IMPORT_PENDING_PREFIX = "war-deck-finder:pending-import:";
 const IMPORT_RELAY_PREFIX = "war-deck-finder:relayed-import:";
 const IMPORT_TRANSFER_MAX_AGE_MS = 30 * 60 * 1000;
-const importChannel = "BroadcastChannel" in window ? new BroadcastChannel(IMPORT_CHANNEL_NAME) : null;
 
 const elements = {
   cardPickerGrid: document.querySelector("#card-picker-grid"),
@@ -58,7 +56,6 @@ const state = {
   // toggles apply to all four decks. Include is always deck-scoped.
   pickerScope: "deck",
   page: 0,
-  pendingSearches: new Map(),
   pendingSearchTabs: new Map(),
 };
 
@@ -167,7 +164,17 @@ function removeImportStorage(key) {
   try {
     window.localStorage.removeItem(key);
   } catch {
-    // The live postMessage/BroadcastChannel path still works when storage is unavailable.
+    // The live postMessage path still works when storage is unavailable.
+  }
+}
+
+function importStorageKeys(prefix) {
+  try {
+    return Array.from({ length: window.localStorage.length }, (_, index) =>
+      window.localStorage.key(index),
+    ).filter((key) => key?.startsWith(prefix));
+  } catch {
+    return [];
   }
 }
 
@@ -191,7 +198,6 @@ function persistPendingSearch(pending) {
 }
 
 function forgetPendingSearch(transferId) {
-  state.pendingSearches.delete(transferId);
   removeImportStorage(importStorageKey(IMPORT_PENDING_PREFIX, transferId));
   state.pendingSearchTabs.forEach((pending, tab) => {
     if (pending.transferId === transferId) state.pendingSearchTabs.delete(tab);
@@ -199,12 +205,9 @@ function forgetPendingSearch(transferId) {
 }
 
 function pruneExpiredImportTransfers() {
-  try {
-    const keys = Array.from({ length: window.localStorage.length }, (_, index) =>
-      window.localStorage.key(index),
-    ).filter(Boolean);
-    keys.forEach((key) => {
-      if (!key.startsWith(IMPORT_PENDING_PREFIX) && !key.startsWith(IMPORT_RELAY_PREFIX)) return;
+  [IMPORT_PENDING_PREFIX, IMPORT_RELAY_PREFIX]
+    .flatMap((prefix) => importStorageKeys(prefix))
+    .forEach((key) => {
       const record = readImportStorage(key);
       if (
         !record ||
@@ -214,9 +217,6 @@ function pruneExpiredImportTransfers() {
         removeImportStorage(key);
       }
     });
-  } catch {
-    // Storage is an optional fallback; direct tab messaging remains available.
-  }
 }
 
 // This function is serialized into the Safari bookmarklet, so it must remain
@@ -431,9 +431,10 @@ function closeDataModal() {
 function prunePendingSearchTabs() {
   let changed = false;
   state.pendingSearchTabs.forEach((pending, tab) => {
-    if (tab.closed) {
+    const expired = Date.now() - pending.createdAt > IMPORT_TRANSFER_MAX_AGE_MS;
+    if (tab.closed || expired) {
       state.pendingSearchTabs.delete(tab);
-      state.pendingSearches.delete(pending.transferId);
+      if (expired) removeImportStorage(importStorageKey(IMPORT_PENDING_PREFIX, pending.transferId));
       changed = true;
     }
   });
@@ -450,7 +451,6 @@ function openSearchTab(search, deckIndexes) {
     deckIndexes: [...deckIndexes],
     createdAt: Date.now(),
   };
-  state.pendingSearches.set(transferId, pending);
   persistPendingSearch(pending);
 
   const sourceUrl = new URL(search.sourceUrl);
@@ -484,7 +484,7 @@ function openCurrentSearches() {
 }
 
 function isDeckSearchPending(deckIndex) {
-  return [...state.pendingSearches.values()].some((pending) =>
+  return [...state.pendingSearchTabs.values()].some((pending) =>
     pending.deckIndexes.includes(deckIndex),
   );
 }
@@ -494,7 +494,7 @@ function clearDeckImports(deckIndexes) {
   affected.forEach((deckIndex) => {
     state.deckImports[deckIndex] = null;
   });
-  state.pendingSearches.forEach((pending) => {
+  state.pendingSearchTabs.forEach((pending) => {
     pending.deckIndexes = pending.deckIndexes.filter((deckIndex) => !affected.has(deckIndex));
     if (pending.deckIndexes.length === 0) {
       forgetPendingSearch(pending.transferId);
@@ -570,25 +570,18 @@ function applyReturnedImport(payload, pending) {
 }
 
 function findStoredPendingSearch(payload) {
-  try {
-    return Array.from({ length: window.localStorage.length }, (_, index) =>
-      window.localStorage.key(index),
-    )
-      .filter((key) => key?.startsWith(IMPORT_PENDING_PREFIX))
-      .map((key) => readImportStorage(key))
-      .filter((pending) => {
-        if (!pending?.transferId || !storedPendingSearch(pending.transferId)) return false;
-        try {
-          validateReturnedImport(payload, pending.search);
-          return true;
-        } catch {
-          return false;
-        }
-      })
-      .sort((first, second) => second.createdAt - first.createdAt)[0] ?? null;
-  } catch {
-    return null;
-  }
+  return importStorageKeys(IMPORT_PENDING_PREFIX)
+    .map((key) => readImportStorage(key))
+    .filter((pending) => {
+      if (!pending?.transferId || !storedPendingSearch(pending.transferId)) return false;
+      try {
+        validateReturnedImport(payload, pending.search);
+        return true;
+      } catch {
+        return false;
+      }
+    })
+    .sort((first, second) => second.createdAt - first.createdAt)[0] ?? null;
 }
 
 function receiveRoyaleApiImport(event) {
@@ -602,7 +595,6 @@ function receiveRoyaleApiImport(event) {
   const transferId = event.data.transferId;
   const pending =
     tabPending ??
-    state.pendingSearches.get(transferId) ??
     (typeof transferId === "string" ? storedPendingSearch(transferId) : null);
   if (!pending) {
     sendImportResult(event, event.data.requestId, false, "The Finder settings changed. Reopen this search.");
@@ -646,8 +638,7 @@ function relayRecordFromValue(value) {
 function receiveRelayedImport(value) {
   const relay = relayRecordFromValue(value);
   if (!relay) return false;
-  const pending =
-    state.pendingSearches.get(relay.transferId) ?? storedPendingSearch(relay.transferId);
+  const pending = storedPendingSearch(relay.transferId);
   if (!pending) return false;
 
   try {
@@ -660,14 +651,9 @@ function receiveRelayedImport(value) {
 }
 
 function consumeStoredImportRelays() {
-  try {
-    const relayKeys = Array.from({ length: window.localStorage.length }, (_, index) =>
-      window.localStorage.key(index),
-    ).filter((key) => key?.startsWith(IMPORT_RELAY_PREFIX));
-    relayKeys.forEach((key) => receiveRelayedImport(readImportStorage(key)));
-  } catch {
-    // BroadcastChannel can still deliver the import when storage is unavailable.
-  }
+  importStorageKeys(IMPORT_RELAY_PREFIX).forEach((key) =>
+    receiveRelayedImport(readImportStorage(key)),
+  );
 }
 
 function handleImportReturn() {
@@ -696,14 +682,11 @@ function handleImportReturn() {
       payload: envelope.payload,
       createdAt: Date.now(),
     };
-    const stored = writeImportStorage(
-      importStorageKey(IMPORT_RELAY_PREFIX, pending.transferId),
-      relay,
-    );
-    if (!stored && !importChannel) {
+    if (
+      !writeImportStorage(importStorageKey(IMPORT_RELAY_PREFIX, pending.transferId), relay)
+    ) {
       throw new Error("Safari blocked the Finder handoff. Reopen the search and try again.");
     }
-    importChannel?.postMessage({ type: "war-deck-finder:relayed-import", relay });
     elements.dataImportMessage.textContent =
       "Candidate data returned to the original Finder tab. This tab will close automatically.";
     window.setTimeout(() => window.close(), 300);
@@ -1650,7 +1633,11 @@ elements.plannerExcludeButton.addEventListener("click", () => {
 elements.plannerClearAllButton.addEventListener("click", clearAllFilters);
 
 window.addEventListener("message", receiveRoyaleApiImport);
-window.addEventListener("focus", prunePendingSearchTabs);
+window.addEventListener("focus", () => {
+  prunePendingSearchTabs();
+  pruneExpiredImportTransfers();
+  consumeStoredImportRelays();
+});
 window.addEventListener("storage", (event) => {
   if (event.key?.startsWith(IMPORT_RELAY_PREFIX) && event.newValue) {
     receiveRelayedImport(event.newValue);
@@ -1658,11 +1645,6 @@ window.addEventListener("storage", (event) => {
 });
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") consumeStoredImportRelays();
-});
-importChannel?.addEventListener("message", (event) => {
-  if (event.data?.type === "war-deck-finder:relayed-import") {
-    receiveRelayedImport(event.data.relay);
-  }
 });
 
 initialize();
