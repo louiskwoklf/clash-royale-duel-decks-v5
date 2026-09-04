@@ -1128,7 +1128,22 @@ body.results-stale .results-meta p {
   font-family: var(--font-body);
   font-size: 16px;
   font-weight: 500;
+}
+
+.bundle-deck-name {
   color: var(--ink);
+}
+
+.bundle-deck-name.winrate {
+  color: var(--success);
+}
+
+.bundle-deck-name.winrate.negative {
+  color: var(--warning);
+}
+
+.bundle-separator {
+  color: var(--mute-light);
 }
 
 .summary-right {

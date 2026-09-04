@@ -97,7 +97,7 @@ test("Sites worker serves the finished page with absolute social metadata", asyn
   assert.match(html, /class="brand-name">War Deck Finder<\/span>/u);
   assert.match(
     html,
-    /class="range-tab active"[^>]+data-days="7"[^>]+aria-pressed="true"/u,
+    /class="range-tab active"[^>]+data-days="3"[^>]+aria-pressed="true"/u,
   );
   assert.match(html, /Open all RoyaleAPI searches/u);
   assert.match(html, /id="find-decks-button"/u);
@@ -126,7 +126,12 @@ test("client returns bookmarklet data through a Cloudflare-safe local relay", as
   assert.match(app, /finderWindow\.postMessage\(/u);
   assert.match(app, /window\.close\(\);/u);
   assert.match(app, /deckImports: Array\(4\)\.fill\(null\)/u);
-  assert.match(app, /days: 7,/u);
+  assert.match(app, /days: 3,/u);
+  assert.doesNotMatch(app, /details\.open|isFirstOnPage/u);
+  assert.match(app, /function createBundleDeckNames\(warDeck\)/u);
+  assert.match(app, /name\.classList\.toggle\("negative", deck\.winRate < 50\)/u);
+  assert.match(styles, /\.bundle-deck-name\.winrate\s*\{[^}]+color: var\(--success\)/u);
+  assert.match(styles, /\.bundle-deck-name\.winrate\.negative\s*\{[^}]+color: var\(--warning\)/u);
   assert.match(app, /second: "2-digit"/u);
   assert.match(app, /rating: ratingMatch \? Number\.parseFloat\(ratingMatch\[1\]\) : null/u);
   assert.match(app, /querySelectorAll\("img\.deck_card"\)/u);

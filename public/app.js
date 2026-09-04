@@ -49,7 +49,7 @@ const state = {
   controller: null,
   data: null,
   deckImports: Array(4).fill(null),
-  days: 7,
+  days: 3,
   deckFilters: Array.from({ length: 4 }, () => ({ include: [], exclude: [] })),
   globalExclude: [],
   loading: false,
@@ -1214,10 +1214,19 @@ function deckFamilyColor(deck) {
   return FAMILY_COLORS[archetypeFamily(deckIdentity(deck))];
 }
 
-function bundleWinConditions(warDeck) {
-  return warDeck.candidateIndexes
-    .map((candidateIndex) => deckIdentity(candidateForIndex(candidateIndex)))
-    .join(" · ");
+function createBundleDeckNames(warDeck) {
+  const names = makeElement("span", "bundle-wincons");
+  warDeck.candidateIndexes.forEach((candidateIndex, index) => {
+    if (index > 0) names.append(makeElement("span", "bundle-separator", " · "));
+    const deck = candidateForIndex(candidateIndex);
+    const name = makeElement("span", "bundle-deck-name", deckIdentity(deck));
+    if (typeof deck?.winRate === "number") {
+      name.classList.add("winrate");
+      name.classList.toggle("negative", deck.winRate < 50);
+    }
+    names.append(name);
+  });
+  return names;
 }
 
 function createDeckPanel(deck, rank) {
@@ -1259,15 +1268,14 @@ function createDeckPanel(deck, rank) {
   return panel;
 }
 
-function createWarDeckCard(warDeck, index, isFirstOnPage) {
+function createWarDeckCard(warDeck, index) {
   const details = makeElement("details", "war-card");
-  if (isFirstOnPage) details.open = true;
 
   const summary = makeElement("summary", "war-card-summary");
   const identity = makeElement("div", "bundle-identity");
   identity.append(
     makeElement("span", "bundle-number", String(index + 1).padStart(2, "0")),
-    makeElement("span", "bundle-wincons", bundleWinConditions(warDeck)),
+    createBundleDeckNames(warDeck),
   );
 
   const summaryRight = makeElement("div", "summary-right");
@@ -1366,7 +1374,7 @@ function renderResults() {
   const visible = results.slice(start, start + PAGE_SIZE);
 
   elements.resultsList.replaceChildren(
-    ...visible.map((warDeck, index) => createWarDeckCard(warDeck, start + index, index === 0)),
+    ...visible.map((warDeck, index) => createWarDeckCard(warDeck, start + index)),
   );
 
   elements.resultsSummary.textContent = `${formatNumber(results.length)} bundles found`;
