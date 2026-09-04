@@ -134,7 +134,8 @@ test("client returns bookmarklet data through a Cloudflare-safe local relay", as
   assert.doesNotMatch(app, /bundles found · 4 candidate pools/u);
   assert.doesNotMatch(html, /id="clear-deck-button"/u);
   assert.match(html, /Install the bookmarklet once/u);
-  assert.match(html, />\s*⚡ Send search to Finder\s*<\/a>/u);
+  assert.match(html, />\s*Send search to Finder\s*<\/a>/u);
+  assert.doesNotMatch(html, /⚡ Send search to Finder/u);
   assert.match(app, /javascript:\/\*war-deck-finder-bookmarklet-v4\*\//u);
   assert.match(app, /pageUrl\.searchParams\.get\("wdf_import"\)/u);
   assert.match(app, /window\.location\.assign\(`\$\{targetOrigin\}\/#import=/u);
