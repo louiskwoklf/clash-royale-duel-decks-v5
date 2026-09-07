@@ -107,6 +107,13 @@ const CARD_CATALOG = Object.freeze([
     "baseKey": "bowler"
   },
   {
+    "key": "ice-wizard-hero",
+    "name": "Hero Ice Wizard",
+    "rarity": "Legendary",
+    "kind": "hero",
+    "baseKey": "ice-wizard"
+  },
+  {
     "key": "magic-archer-hero",
     "name": "Hero Magic Archer",
     "rarity": "Legendary",
@@ -730,6 +737,13 @@ const CARD_CATALOG = Object.freeze([
     "baseKey": "goblin-demolisher"
   },
   {
+    "key": "minion-giant",
+    "name": "Minion Giant",
+    "rarity": "Rare",
+    "kind": "normal",
+    "baseKey": "minion-giant"
+  },
+  {
     "key": "goblin-hut",
     "name": "Goblin Hut",
     "rarity": "Rare",
@@ -1342,6 +1356,7 @@ const ELIXIR_COSTS = Object.freeze({
   "mighty-miner": 4,
   "miner": 3,
   "mini-pekka": 4,
+  "minion-giant": 4,
   "minion-horde": 5,
   "minions": 3,
   "mirror": 1,
