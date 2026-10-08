@@ -114,6 +114,13 @@ const CARD_CATALOG = Object.freeze([
     "baseKey": "ice-wizard"
   },
   {
+    "key": "electro-wizard-hero",
+    "name": "Hero Electro Wizard",
+    "rarity": "Legendary",
+    "kind": "hero",
+    "baseKey": "electro-wizard"
+  },
+  {
     "key": "magic-archer-hero",
     "name": "Hero Magic Archer",
     "rarity": "Legendary",
@@ -378,6 +385,13 @@ const CARD_CATALOG = Object.freeze([
     "rarity": "Epic",
     "kind": "evolution",
     "baseKey": "pekka"
+  },
+  {
+    "key": "electro-giant-ev1",
+    "name": "Electro Giant Evolution",
+    "rarity": "Epic",
+    "kind": "evolution",
+    "baseKey": "electro-giant"
   },
   {
     "key": "princess-ev1",
