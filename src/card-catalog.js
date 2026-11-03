@@ -296,6 +296,13 @@ const CARD_CATALOG = Object.freeze([
     "baseKey": "goblin-cage"
   },
   {
+    "key": "giant-ev1",
+    "name": "Giant Evolution",
+    "rarity": "Rare",
+    "kind": "evolution",
+    "baseKey": "giant"
+  },
+  {
     "key": "wizard-ev1",
     "name": "Wizard Evolution",
     "rarity": "Rare",
@@ -308,6 +315,13 @@ const CARD_CATALOG = Object.freeze([
     "rarity": "Rare",
     "kind": "evolution",
     "baseKey": "royal-hogs"
+  },
+  {
+    "key": "mirror-ev1",
+    "name": "Mirror Evolution",
+    "rarity": "Epic",
+    "kind": "evolution",
+    "baseKey": "mirror"
   },
   {
     "key": "wall-breakers-ev1",
